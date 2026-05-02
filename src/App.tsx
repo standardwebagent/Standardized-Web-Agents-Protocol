@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import 'highlight.js/styles/github-dark.min.css';
 import hljs from 'highlight.js';
-import { Paperclip, Send, Cpu, Loader2 } from 'lucide-react';
+import { Paperclip, Send, Cpu, Loader2, Mic, Volume2, VolumeX, Download, Upload } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -29,6 +29,14 @@ export default function App() {
   const [isReady, setIsReady] = useState(false);
   const [currentModel, setCurrentModel] = useState('gemma-2b-it-q4f16_1-MLC');
   const [typing, setTyping] = useState(false);
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+
+  // refs for closures
+  const isVoiceEnabledRef = useRef(isVoiceEnabled);
+  useEffect(() => {
+    isVoiceEnabledRef.current = isVoiceEnabled;
+  }, [isVoiceEnabled]);
 
   const workerRef = useRef<Worker | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -85,6 +93,23 @@ export default function App() {
           ]);
           setIsProcessing(false);
           setStatus('Idle');
+          setIsSpinning(false);
+          if (isVoiceEnabledRef.current && 'speechSynthesis' in window) {
+            // Strip markdown formatting for cleaner speech synthesis
+            const textToSpeak = data.replace(/[*#_`]/g, '').replace(/\[.*\]\(.*\)/g, '');
+            const utterance = new SpeechSynthesisUtterance(textToSpeak);
+            window.speechSynthesis.speak(utterance);
+          }
+          break;
+        case 'EXPORT_DATA':
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `swap_agent_memory_${new Date().getTime()}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          setStatus('Export Complete');
           setIsSpinning(false);
           break;
         case 'ERROR':
@@ -182,6 +207,53 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !workerRef.current) return;
+    setStatus(`Restoring DB...`);
+    setIsSpinning(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        workerRef.current?.postMessage({ type: 'IMPORT_MEMORY', payload: data });
+      } catch (err) {
+        setStatus('Invalid backup file');
+        setIsSpinning(false);
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  };
+
+  const handleExport = () => {
+    if (!workerRef.current) return;
+    setStatus('Exporting DB...');
+    setIsSpinning(true);
+    workerRef.current.postMessage({ type: 'EXPORT_MEMORY' });
+  };
+
+  const handleMic = () => {
+    if (!('webkitSpeechRecognition' in window)) {
+      alert("Speech recognition not supported in this browser.");
+      return;
+    }
+    const SpeechRecognition = (window as any).webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (event: any) => {
+      const text = event.results[0][0].transcript;
+      setInputValue(text);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    
+    recognition.start();
+  };
+
   const renderMessageContent = (msg: Message) => {
     if (msg.sender === 'agent' && msg.isMarkdown) {
       const htmlContent = marked.parse(msg.text);
@@ -269,17 +341,37 @@ export default function App() {
         </div>
 
         {/* Input Area */}
-        <div className="mt-auto relative pt-4 shrink-0 flex items-center gap-2">
-          <label className="p-2.5 text-white/40 cursor-pointer hover:text-white hover:bg-white/10 transition-colors rounded-xl border border-transparent hover:border-white/10 shrink-0" title="Upload Document">
-            <Paperclip size={20} />
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              className="hidden" 
-              accept=".txt,.md,.json" 
-              onChange={handleFileUpload}
-            />
-          </label>
+        <div className="mt-auto relative pt-4 shrink-0 flex items-end gap-2">
+          <div className="flex items-center bg-black/20 border border-white/10 rounded-2xl p-1 mb-0.5 shrink-0 overflow-x-auto max-w-[150px] md:max-w-none no-scrollbar">
+            <label className="p-2 text-white/40 cursor-pointer hover:text-white hover:bg-white/10 transition-colors rounded-xl shrink-0" title="Upload Document">
+              <Paperclip size={18} />
+              <input 
+                type="file" 
+                ref={fileInputRef}
+                className="hidden" 
+                accept=".txt,.md,.json" 
+                onChange={handleFileUpload}
+              />
+            </label>
+            <button 
+              onClick={handleMic}
+              className={`p-2 cursor-pointer transition-colors rounded-xl shrink-0 ${isListening ? 'text-red-400 bg-red-400/10 animate-pulse' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
+              title="Voice Input"
+            >
+              <Mic size={18} />
+            </button>
+            <div className="w-px h-4 bg-white/10 mx-1 shrink-0"></div>
+            <button onClick={() => setIsVoiceEnabled(!isVoiceEnabled)} className={`p-2 cursor-pointer transition-colors rounded-xl shrink-0 ${isVoiceEnabled ? 'text-emerald-400 bg-emerald-400/10' : 'text-white/40 hover:text-white hover:bg-white/10'}`} title="Toggle Voice Response">
+              {isVoiceEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+            </button>
+            <button onClick={handleExport} className="p-2 text-white/40 cursor-pointer transition-colors hover:text-white hover:bg-white/10 rounded-xl shrink-0" title="Backup Base Data">
+              <Download size={18} />
+            </button>
+            <label className="p-2 text-white/40 cursor-pointer transition-colors hover:text-white hover:bg-white/10 rounded-xl flex items-center shrink-0" title="Restore Data">
+              <Upload size={18} />
+              <input type="file" className="hidden" accept=".json" onChange={handleImport} />
+            </label>
+          </div>
           
           <div className="flex-1 relative">
             <textarea 

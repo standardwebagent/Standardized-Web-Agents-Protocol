@@ -132,5 +132,18 @@ self.onmessage = async (e: MessageEvent) => {
     await handleTask(e.data.payload);
   } else if (e.data.type === 'INGEST_FILE') {
     await ingestFile(e.data.payload.name, e.data.payload.content);
+  } else if (e.data.type === 'EXPORT_MEMORY') {
+    const res = await db.query('SELECT role, content, metadata FROM memory');
+    self.postMessage({ type: 'EXPORT_DATA', data: res.rows });
+  } else if (e.data.type === 'IMPORT_MEMORY') {
+    self.postMessage({ type: 'PROGRESS', data: 'Restoring memory...' });
+    let count = 0;
+    for (const row of e.data.payload) {
+      if (row.role && row.content) {
+        await save(row.role, row.content, row.metadata);
+        count++;
+      }
+    }
+    self.postMessage({ type: 'DONE', data: `Restored ${count} memory records successfully.` });
   }
 };
