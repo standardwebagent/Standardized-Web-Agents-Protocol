@@ -1,0 +1,6 @@
+{
+  "name": "Standardized Web Agents Protocol",
+  "description": "An autonomous AI agent using Web-LLM, embedded vector search, and web tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

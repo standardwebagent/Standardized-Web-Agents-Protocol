@@ -1,0 +1,21 @@
+{
+  "name": "SWAP Core",
+  "short_name": "SWAP",
+  "description": "Local Autonomous AI Agent",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0a0b14",
+  "theme_color": "#0a0b14",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cGF0aCBkPSJNMjAgNTAgTDQwIDMwIEw2MCAzMCBMODAgNTAgTDYwIDcwIEw0MCA3MCBaIiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMyIvPjxwYXRoIGQ9Ik0yMCA1MCBMNDAgNzAgTDYwIDcwIEw4MCA1MCBMNjAgMzAgTDQwIDMwIFoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwYTNmZiIgc3Ryb2tlLXdpZHRoPSIyIiBvcGFjaXR5PSIwLjgiLz48Y2lyY2xlIGN4PSI0MiIgY3k9IjUwIiByPSI0IiBmaWxsPSIjM2I4MmY2Ii8+PGNpcmNsZSBjeD0iNTgiIGN5PSI1MCIgcj0iNCIgZmlsbD0iIzAwYTNmZiIvPjwvc3ZnPg==",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cGF0aCBkPSJNMjAgNTAgTDQwIDMwIEw2MCAzMCBMODAgNTAgTDYwIDcwIEw0MCA3MCBaIiBmaWxsPSJub25lIiBzdHJva2U9IiMzYjgyZjYiIHN0cm9rZS13aWR0aD0iMyIvPjxwYXRoIGQ9Ik0yMCA1MCBMNDAgNzAgTDYwIDcwIEw4MCA1MCBMNjAgMzAgTDQwIDMwIFoiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwYTNmZiIgc3Ryb2tlLXdpZHRoPSIyIiBvcGFjaXR5PSIwLjgiLz48Y2lyY2xlIGN4PSI0MiIgY3k9IjUwIiByPSI0IiBmaWxsPSIjM2I4MmY2Ii8+PGNpcmNsZSBjeD0iNTgiIGN5PSI1MCIgcj0iNCIgZmlsbD0iIzAwYTNmZiIvPjwvc3ZnPg==",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
