@@ -2,10 +2,10 @@
 
 **Stan** is a privacy-first, autonomous AI assistant built on the **Standardized Web Agent Protocol (SWAP)**. Unlike cloud-based chatbots, Stan runs entirely on your hardware and connects directly to your local ecosystem.
 
-- **Formal specification:** [Protocol.md](Protocol.md) – covering the 10 core enclaves of the protocol.
+- **Formal specification:** [protocol.md](public/protocol.md) – covering the 10 core enclaves of the protocol.
 - **Private & Secure:** Core logic and memory stay in your browser. No server costs, no API keys, no data leakage.
 - **MCP Integration:** Connects to local databases, file systems, and calendars via the Model Context Protocol (MCP).
-- **Hybrid Local LLM:** Leverages WebGPU for native-speed inference, with automatic **WASM/CPU fallback** for 99% device compatibility.
+- **WebGPU Powered:** Leverages your GPU for native-speed inference using WebLLM.
 
 ### Why Stan is Different
 Stan isn't just a chat interface; he is an **agent** designed for autonomy:
@@ -29,12 +29,6 @@ Stan can dynamically discover and invoke tools provided by any MCP-compliant ser
 
 **Autonomous Reasoning**
 Stan runs in an autonomous loop (up to 15 steps), allowing him to think, use tools, search memory, and gather information before completing a task.
-
-**Native Browser Tools**
-Stan can interact with your OS through the browser via the SWAP protocol:
-- **Communications:** `showNotification`, `vibrate`, `shareContent`.
-- **System:** `clipboardRead`, `clipboardWrite`, `wakeLock`.
-- **Context:** `getGeolocation`, `barcodeScan`.
 
 **Local Vector Memory (RAG)**
 Using an embedded **PGlite** (Postgres WASM) database with vector extensions, Stan stores your notes and documents locally.
@@ -64,4 +58,4 @@ For major changes to the spec, open a protocol-change proposal.
 🌐 Links
 
 · GitHub Repository: https://github.com/standardwebagent/Standardized-Web-Agents-Protocol
-· Protocol Specification: [Protocol.md](Protocol.md)
+· Protocol Specification: [protocol.md](public/protocol.md)

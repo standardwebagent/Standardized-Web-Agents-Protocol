@@ -36,30 +36,9 @@ async function init(modelId: string) {
         };
 
         self.postMessage({ type: 'PROGRESS', data: `Loading LLM (${modelId})` });
-        
-        try {
-          // Attempt WebGPU first
-          engine = await CreateMLCEngine(modelId, { 
-            initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p }) 
-          });
-        } catch (webGpuError) {
-          self.postMessage({ type: 'PROGRESS', data: 'WebGPU failed, falling back to WASM/CPU...' });
-          try {
-            // Attempt WASM/CPU fallback
-            engine = await CreateMLCEngine(modelId, { 
-              initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p }),
-              // @ts-ignore
-              device: "cpu"
-            });
-          } catch (wasmError) {
-            throw new Error(`Failed to load model on both WebGPU and WASM: ${wasmError}`);
-          }
-        }
-        
-        try {
-          const deviceName = await engine.getInterfaces().device;
-          self.postMessage({ type: 'PROGRESS', data: `Model loaded on ${deviceName || 'fallback device'}` });
-        } catch(e) {}
+        engine = await CreateMLCEngine(modelId, { 
+          initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p }) 
+        });
         
         self.postMessage({ type: 'READY' });
         resolveInit();
@@ -169,7 +148,7 @@ async function handleTask(userText: string, systemPrompt?: string) {
   
   const promptToUse = systemPrompt || `You are Stan, an autonomous personal assistant.
 You have native tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text).
-You also have browser tools: clipboardRead (), clipboardWrite (text), getGeolocation (), showNotification (title, body), wakeLock (), shareContent (text, url), vibrate (ms), barcodeScan ().
+You also have browser tools: clipboardRead (), clipboardWrite (text), getGeolocation (), showNotification (title, body), wakeLock (), shareContent (text, url), vibrate (ms).
 You also have these MCP dynamic tools:
 ${toolDescriptions}
 

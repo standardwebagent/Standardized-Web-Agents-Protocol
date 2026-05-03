@@ -71,8 +71,7 @@ const DEFAULT_PROMPT = `You are Stan, a personal AI assistant. You use MCP to co
 const DEFAULT_MODELS: LLMModel[] = [
   { id: 'gemma-2b-it-q4f16_1-MLC', name: 'Gemma 2B', description: 'Balanced performance and reasoning. Best overall choice.' },
   { id: 'SmolLM-1.7B-Instruct-v0.2-q4f16_1-MLC', name: 'SmolLM 1.7B', description: 'Fastest loading and generation. Best for older devices/phones.' },
-  { id: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC', name: 'Qwen 1.5B', description: 'Compact and smart. Good for low-resource environments.' },
-  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3B', description: 'Most capable reasoning. May run slower on entry-level hardware.' }
+  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 3B', description: 'Most capable reasoning. May run slower on entry-level hardware.' }
 ];
 
 export default function App() {
@@ -163,27 +162,30 @@ export default function App() {
       switch (type) {
         case 'PROGRESS':
         case 'THINKING':
-          if (isMountedRef.current) {
-            setStatus(data);
-            setIsSpinning(true);
-          }
+          setStatus(data);
+          setIsSpinning(true);
           break;
         case 'DOWNLOAD_PROGRESS':
-          if (isMountedRef.current) {
-            setStatus('Loading Model');
-            setIsSpinning(true);
-            setIsDownloading(true);
-            setDownloadText(data.text);
-            setDownloadProgress(data.progress || 0);
-          }
-          
+          setStatus('Loading Model');
+          setIsSpinning(true);
+          setIsDownloading(true);
+          setDownloadText(data.text);
+          setDownloadProgress(data.progress || 0);
+
           // Try to extract speed/ETA from text or calculate it
+          // Example text: "Fetching... [1/6]: 12.3MB/s" or "Fetching... 120MB/230MB (12MB/s)"
           const speedMatch = data.text.match(/(\d+\.?\d*\s*[kMG]B\/s)/i);
-          if (speedMatch && isMountedRef.current) {
+          if (speedMatch) {
             setDownloadSpeed(speedMatch[1]);
+            
+            // If we have progress and speed, we can sometimes estimate, but WebLLM text is better
+            // Some versions of WebLLM include the time remaining in the text.
           }
 
-          if (data.progress > 0 && data.progress < 1 && isMountedRef.current) {
+          // Very basic ETA calculation if not in text
+          if (data.progress > 0 && data.progress < 1) {
+            // If we don't have a built-in ETA in text, we could calculate it here if we tracked startTime
+            // But let's look for common patterns like "ETA: 10s"
             const etaMatch = data.text.match(/ETA:\s*(\d+s|\d+m\s*\d*s)/i);
             if (etaMatch) {
               setEta(etaMatch[1]);
@@ -191,40 +193,36 @@ export default function App() {
           }
           break;
         case 'READY':
-          if (isMountedRef.current) {
-            setStatus('Ready');
-            setIsSpinning(false);
-            setIsDownloading(false);
-            setIsReady(true);
-          }
+          setStatus('Ready');
+          setIsSpinning(false);
+          setIsDownloading(false);
+          setIsReady(true);
           // Resync MCP servers after worker restart
           worker.postMessage({ type: 'SYNC_MCP', payload: mcpServersRef.current });
           break;
         case 'DONE':
-          if (isMountedRef.current) {
-            setTyping(false);
-            setMessages(prev => [
-              ...prev,
-              {
-                id: crypto.randomUUID(),
-                sender: 'agent',
-                text: data,
-                isMarkdown: true,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              }
-            ]);
-            setIsProcessing(false);
-            setStatus('Idle');
-            setIsSpinning(false);
-          }
+          setTyping(false);
+          setMessages(prev => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              sender: 'agent',
+              text: data,
+              isMarkdown: true,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+          ]);
+          setIsProcessing(false);
+          setStatus('Idle');
+          setIsSpinning(false);
           if (isVoiceEnabledRef.current && 'speechSynthesis' in window) {
+            // Strip markdown formatting for cleaner speech synthesis
             const textToSpeak = data.replace(/[*#_`]/g, '').replace(/\[.*\]\(.*\)/g, '');
             const utterance = new SpeechSynthesisUtterance(textToSpeak);
             window.speechSynthesis.speak(utterance);
           }
           break;
         case 'EXPORT_DATA':
-          if (!isMountedRef.current) return;
           const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -291,14 +289,6 @@ export default function App() {
                 respond('Vibrated for ' + ms + 'ms');
               } else {
                 respond('Vibration not supported');
-              }
-            } else if (action === 'barcodeScan') {
-              if ('BarcodeDetector' in window) {
-                // This requires a video element or blob, for now we just return support info
-                // or tell user to upload an image.
-                respond('BarcodeDetector is supported. For now, please upload a photo for deep analysis.');
-              } else {
-                respond('Barcode Detection NOT supported in this browser.');
               }
             } else {
               respond('Unknown browser tool: ' + action);
@@ -465,21 +455,13 @@ export default function App() {
     recognition.continuous = false;
     recognition.interimResults = false;
     
-    recognition.onstart = () => {
-      if (isMountedRef.current) setIsListening(true);
-    };
+    recognition.onstart = () => setIsListening(true);
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      if (isMountedRef.current) {
-        const text = event.results[0][0].transcript;
-        setInputValue(text);
-      }
+      const text = event.results[0][0].transcript;
+      setInputValue(text);
     };
-    recognition.onerror = () => {
-      if (isMountedRef.current) setIsListening(false);
-    };
-    recognition.onend = () => {
-      if (isMountedRef.current) setIsListening(false);
-    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
     
     recognition.start();
   };
@@ -498,8 +480,57 @@ export default function App() {
       <div className="absolute bottom-[-100px] right-[-100px] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-emerald-500/10 rounded-full blur-[150px] pointer-events-none"></div>
 
-      <div className="relative z-10 w-full h-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-4 md:gap-6">
-        {/* Header */}
+      {isDownloading && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-[#0a0b14]/90 backdrop-blur-xl border-b border-emerald-500/30 w-full animate-[fadeIn_0.3s_ease] shadow-2xl shadow-emerald-500/10">
+          <div className="h-1.5 w-full bg-black/40 overflow-hidden relative">
+            <div 
+              className="h-full bg-emerald-500 transition-all duration-500 ease-out relative shadow-[0_0_10px_rgba(16,185,129,0.5)]" 
+              style={{ width: `${downloadProgress * 100}%` }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent w-full animate-[shimmer_2s_infinite]"></div>
+            </div>
+          </div>
+          <div className="px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+              </div>
+              <div className="flex flex-col min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-white text-sm">Installing AI Model</span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider">
+                    {Math.round(downloadProgress * 100)}%
+                  </span>
+                </div>
+                <span className="text-xs text-white/50 truncate font-mono mt-0.5">{downloadText}</span>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-6 shrink-0">
+              {downloadSpeed && (
+                <div className="flex flex-col items-end">
+                  <span className="text-[10px] text-white/30 uppercase font-mono tracking-tighter">Speed</span>
+                  <span className="text-xs font-mono text-emerald-400 font-bold">{downloadSpeed}</span>
+                </div>
+              )}
+              {eta && (
+                <div className="flex flex-col items-end border-l border-white/10 pl-6">
+                  <span className="text-[10px] text-white/30 uppercase font-mono tracking-tighter">Est. Time</span>
+                  <span className="text-xs font-mono text-white/90 font-bold">{eta}</span>
+                </div>
+              )}
+              {!eta && downloadProgress > 0 && (
+                 <div className="flex flex-col items-end border-l border-white/10 pl-6">
+                  <span className="text-[10px] text-white/30 uppercase font-mono tracking-tighter">Status</span>
+                  <span className="text-xs font-mono text-white/90 font-bold animate-pulse text-emerald-400">Downloading...</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`relative z-10 w-full h-full p-4 md:p-6 flex flex-col gap-4 md:gap-6 ${isDownloading ? 'pt-12 md:pt-14' : ''}`}>        {/* Header */}
         <header className="flex items-center justify-between bg-transparent px-2 py-2">
         <div className="flex items-center gap-3 font-semibold select-none cursor-default">
           <span className="text-base tracking-tight font-medium text-white/90">Stan</span>
@@ -537,81 +568,8 @@ export default function App() {
       </header>
 
       {/* Chat Container */}
-      <main className="flex-1 flex flex-col gap-4 bg-white/[0.03] border border-white/10 backdrop-blur-3xl rounded-3xl p-4 md:p-6 overflow-hidden relative shadow-2xl max-w-5xl mx-auto w-full">
-        {isDownloading ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-[fadeIn_0.5s_ease]">
-            <div className="w-full max-w-2xl bg-black/40 border border-emerald-500/20 rounded-[2.5rem] p-8 md:p-12 shadow-2xl backdrop-blur-2xl relative overflow-hidden group">
-              {/* Animated background decoration */}
-              <div className="absolute top-0 left-0 w-full h-1.5 bg-white/5 overflow-hidden">
-                <div 
-                  className="h-full bg-emerald-500 transition-all duration-500 ease-out shadow-[0_0_15px_rgba(16,185,129,0.8)]" 
-                  style={{ width: `${downloadProgress * 100}%` }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent w-full animate-[shimmer_2s_infinite]"></div>
-                </div>
-              </div>
-
-              <div className="flex flex-col items-center gap-8 relative z-10">
-                <div className="relative">
-                  <div className="w-24 h-24 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center animate-pulse">
-                    <Download size={40} className="text-emerald-400" />
-                  </div>
-                  <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-black text-[10px] font-black px-2 py-1 rounded-lg shadow-lg">
-                    {Math.round(downloadProgress * 100)}%
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <h2 className="text-3xl font-black text-white tracking-tight">System Installation</h2>
-                  <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed italic border-l-2 border-emerald-500/30 pl-4 py-1">
-                    Downloading local intelligence. Your data never leaves this browser.
-                  </p>
-                </div>
-
-                <div className="w-full bg-white/5 rounded-2xl p-6 flex flex-col gap-6">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between items-end mb-1">
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-400/70">Master Progress</span>
-                      <span className="text-lg font-mono font-bold text-white">{Math.round(downloadProgress * 100)}%</span>
-                    </div>
-                    <div className="h-4 w-full bg-black/60 rounded-full overflow-hidden p-1 border border-white/5 shadow-inner">
-                      <div 
-                        className="h-full bg-emerald-500 rounded-full transition-all duration-700 ease-out shadow-[0_0_10px_rgba(16,185,129,0.5)]" 
-                        style={{ width: `${downloadProgress * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white/5 rounded-xl p-4 border border-white/5 flex flex-col items-center gap-1 group-hover:bg-white/[0.08] transition-colors">
-                      <span className="text-[10px] uppercase font-bold text-white/30 tracking-tighter">Throughput</span>
-                      <span className="text-xl font-mono font-black text-emerald-400">{downloadSpeed || '-- MB/s'}</span>
-                    </div>
-                    <div className="bg-white/5 rounded-xl p-4 border border-white/5 flex flex-col items-center gap-1 group-hover:bg-white/[0.08] transition-colors">
-                      <span className="text-[10px] uppercase font-bold text-white/30 tracking-tighter">Time Left</span>
-                      <span className="text-xl font-mono font-black text-white">{eta || (downloadProgress > 0 ? 'CALCULATING...' : '--')}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 py-2 px-4 bg-emerald-500/5 border border-emerald-500/10 rounded-full animate-pulse">
-                  <Loader2 size={14} className="text-emerald-400 animate-spin" />
-                  <span className="text-[11px] font-mono text-emerald-400/80 truncate max-w-[200px]">{downloadText}</span>
-                </div>
-              </div>
-
-              {/* Decorative radial gradients */}
-              <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-[80px]"></div>
-              <div className="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-[80px]"></div>
-            </div>
-            
-            <p className="mt-8 text-xs text-white/30 flex items-center gap-2">
-              <span className="w-1 h-1 bg-emerald-500 rounded-full"></span>
-              Installation persists in your browser cache for instant future loads.
-            </p>
-          </div>
-        ) : (
-          <div ref={chatContainerRef} className="flex-1 overflow-y-auto flex flex-col gap-6 pr-2 webkit-overflow-scrolling-touch">
+      <main className="flex-1 flex flex-col gap-4 bg-white/[0.03] border border-white-[0.08] backdrop-blur-3xl rounded-3xl p-4 md:p-6 overflow-hidden relative shadow-2xl">
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto flex flex-col gap-6 pr-2 webkit-overflow-scrolling-touch">
         
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto animate-[fadeIn_0.5s_ease]">
@@ -648,7 +606,7 @@ export default function App() {
         {messages.map((msg) => (
           <div 
             key={msg.id} 
-            className={`flex flex-col max-w-[85%] md:max-w-[70%] lg:max-w-[60%] animate-[fadeIn_0.2s_ease] ${msg.sender === 'user' ? 'self-end' : 'self-start'}`}
+            className={`flex flex-col max-w-[85%] animate-[fadeIn_0.2s_ease] ${msg.sender === 'user' ? 'self-end' : 'self-start'}`}
           >
             <div className={`px-4 py-3 border backdrop-blur-lg break-words ${msg.sender === 'user' ? 'bg-white/5 border-white/5 rounded-2xl rounded-tr-none' : 'bg-white/10 border-white/20 rounded-2xl rounded-tl-none'} shadow-lg`}>
               {renderMessageContent(msg)}
@@ -671,8 +629,7 @@ export default function App() {
             </div>
           </div>
         )}
-      </div>
-    )}
+        </div>
 
         {/* Input Area */}
         <div className="mt-auto relative shrink-0 pt-2">
