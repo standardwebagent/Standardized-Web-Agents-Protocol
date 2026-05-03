@@ -18,11 +18,6 @@ export default function LandingApp() {
       {/* Navbar overlay */}
       <nav className="fixed top-0 left-0 w-full z-50 p-6 flex justify-between items-center pointer-events-none">
         <div className="flex items-center gap-3 font-semibold pointer-events-auto mix-blend-difference text-white">
-          <svg viewBox="0 0 100 100" width="32" height="32" className="drop-shadow-lg">
-            <path d="M20 50 L40 30 L60 30 L80 50 L60 70 L40 70 Z" fill="none" stroke="currentColor" strokeWidth="4"/>
-            <circle cx="42" cy="50" r="5" fill="currentColor"/>
-            <circle cx="58" cy="50" r="5" fill="currentColor"/>
-          </svg>
           <div className="flex flex-col">
             <span className="text-xl tracking-tight hidden sm:block leading-none">Stan</span>
             <span className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-mono hidden sm:block mt-0.5">SWAP Protocol</span>
@@ -58,33 +53,6 @@ export default function LandingApp() {
             <p className="text-xl md:text-2xl text-black/60 font-medium leading-[1.3] max-w-lg mb-12">
               A local-first, privacy-focused assistant built on the SWAP protocol. Stan runs entirely in your browser using WebGPU and connects to your local tools via the Model Context Protocol (MCP).
             </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 select-none w-fit">
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
-                 <Shield className="w-4 h-4 text-black/60" />
-                 <span className="font-medium text-sm">Maximum Privacy</span>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
-                 <Activity className="w-4 h-4 text-black/60" />
-                 <span className="font-medium text-sm">Client-Side Compute</span>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
-                 <CloudOff className="w-4 h-4 text-black/60" />
-                 <span className="font-medium text-sm">Zero LLM Costs</span>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
-                 <Cpu className="w-4 h-4 text-black/60" />
-                 <span className="font-medium text-sm">WebGPU Ready</span>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
-                 <WifiOff className="w-4 h-4 text-black/60" />
-                 <span className="font-medium text-sm">Offline Capable</span>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-black/10 bg-black/[0.03] text-black/80 transition-colors hover:bg-black/[0.05]">
-                 <Database className="w-4 h-4 text-black/60" />
-                 <span className="font-medium text-sm">MCP Protocol</span>
-              </div>
-            </div>
           </motion.div>
         </section>
 

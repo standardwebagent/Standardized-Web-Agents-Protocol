@@ -74,9 +74,9 @@ These are **not required** for a basic standard agent, but are required for high
 
 - **Enclave 4: Kinetic Hardware** – WebHID, WebUSB, Web Bluetooth
 
-## Implementation Guide: Building Custom SWAP Networks
+## Implementation Guide: Building Custom SWAP Agents
 
-Whether you are building a simple private personal assistant or deploying a fully audited healthcare network, follow these steps to extend the SWAP architecture.
+Whether you are building a simple private personal assistant or deploying a fully audited healthcare agent, follow these steps to extend the SWAP architecture.
 
 ### 1. Simple Personal Assistant (Open Source / Hobbyist)
 If you just want a private assistant that remembers your tasks without sending data to the cloud:
@@ -100,6 +100,6 @@ If you are building for a client who owns a clinic and needs a HIPAA-compliant i
 | **SWAP Standard** | 1, 5, 6, 10 (+ 3 for multi-device) |
 | **SWAP High Assurance** | Standard + 2, 8, 9 |
 
-The reference implementation `swap-agent.html` is **SWAP Standard compliant**. It implements enclaves 1, 5, 6, and 10 fully. High Assurance features can be implemented as needed for enterprise deployments.
+The reference implementation (Stan, available via `swap-agent.html`) is **SWAP Standard compliant**. It implements enclaves 1, 5, 6, and 10 fully. High Assurance features can be implemented as needed for enterprise deployments.
 
 **License:** Specification CC BY-SA 4.0 / Reference Implementation MIT

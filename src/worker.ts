@@ -10,33 +10,46 @@ let embed: (text: string) => Promise<number[]>;
 let mcpClients: Map<string, Client> = new Map();
 
 async function init(modelId: string) {
-  self.postMessage({ type: 'PROGRESS', data: 'Starting DB...' });
-  db = new PGlite('opfs://swap-core');
-  await db.exec(`
-    CREATE EXTENSION IF NOT EXISTS vector;
-    CREATE TABLE IF NOT EXISTS memory (
-      id SERIAL PRIMARY KEY,
-      role TEXT,
-      content TEXT,
-      embedding vector(384),
-      ts TIMESTAMPTZ DEFAULT NOW(),
-      metadata JSONB
-    );
-  `);
+  self.postMessage({ type: 'PROGRESS', data: 'Waiting for DB lock...' });
+  return new Promise<void>((resolveInit, rejectInit) => {
+    navigator.locks.request('swap-core-db-lock', async (lock) => {
+      try {
+        self.postMessage({ type: 'PROGRESS', data: 'Starting DB...' });
+        db = new PGlite('opfs://swap-core');
+        await db.exec(`
+          CREATE EXTENSION IF NOT EXISTS vector;
+          CREATE TABLE IF NOT EXISTS memory (
+            id SERIAL PRIMARY KEY,
+            role TEXT,
+            content TEXT,
+            embedding vector(384),
+            ts TIMESTAMPTZ DEFAULT NOW(),
+            metadata JSONB
+          );
+        `);
 
-  self.postMessage({ type: 'PROGRESS', data: 'Loading embedder...' });
-  const pipe = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true });
-  embed = async (text: string) => {
-    const out = await pipe(text, { pooling: 'mean', normalize: true });
-    return Array.from(out.data);
-  };
+        self.postMessage({ type: 'PROGRESS', data: 'Loading embedder...' });
+        const pipe = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', { quantized: true });
+        embed = async (text: string) => {
+          const out = await pipe(text, { pooling: 'mean', normalize: true });
+          return Array.from(out.data);
+        };
 
-  self.postMessage({ type: 'PROGRESS', data: `Loading LLM (${modelId})` });
-  engine = await CreateMLCEngine(modelId, { 
-    initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p.text }) 
+        self.postMessage({ type: 'PROGRESS', data: `Loading LLM (${modelId})` });
+        engine = await CreateMLCEngine(modelId, { 
+          initProgressCallback: (p: any) => self.postMessage({ type: 'DOWNLOAD_PROGRESS', data: p }) 
+        });
+        
+        self.postMessage({ type: 'READY' });
+        resolveInit();
+      } catch (err) {
+        rejectInit(err);
+      }
+      
+      // Keep the lock active until the worker is terminated
+      return new Promise<void>(() => {});
+    });
   });
-  
-  self.postMessage({ type: 'READY' });
 }
 
 async function syncMcp(urls: string[]) {
@@ -83,7 +96,10 @@ async function search(q: string, limit: number = 3) {
 
 async function fetchWeb(url: string) {
   try {
-    const res = await fetch(url);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
     const text = await res.text();
     return text.slice(0, 2000);
   } catch(e: any) { 
@@ -102,6 +118,20 @@ async function calculate(expr: string) {
   }
 }
 
+function callMainThreadAPI(action: string, payload: any): Promise<any> {
+    return new Promise((resolve) => {
+        const id = crypto.randomUUID();
+        const handler = (e: MessageEvent) => {
+            if (e.data.type === 'API_RESULT' && e.data.id === id) {
+               self.removeEventListener('message', handler);
+               resolve(e.data.result);
+            }
+        };
+        self.addEventListener('message', handler);
+        self.postMessage({ type: 'CALL_API', id, action, payload });
+    });
+}
+
 async function handleTask(userText: string, systemPrompt?: string) {
   await save('user', userText);
 
@@ -118,6 +148,7 @@ async function handleTask(userText: string, systemPrompt?: string) {
   
   const promptToUse = systemPrompt || `You are Stan, an autonomous personal assistant.
 You have native tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text).
+You also have browser tools: clipboardRead (), clipboardWrite (text), getGeolocation (), showNotification (title, body), wakeLock (), shareContent (text, url), vibrate (ms).
 You also have these MCP dynamic tools:
 ${toolDescriptions}
 
@@ -166,6 +197,14 @@ Only output JSON.`;
       self.postMessage({ type: 'DONE', data: finalResult });
       await save('assistant', finalResult);
       return;
+    } else if (['clipboardRead', 'clipboardWrite', 'getGeolocation', 'showNotification', 'wakeLock', 'shareContent', 'vibrate'].includes(act.action)) {
+      self.postMessage({ type: 'THINKING', data: `Calling browser tool: ${act.action}...` });
+      try {
+        const result = await callMainThreadAPI(act.action, act.payload);
+        observation = typeof result === 'object' ? JSON.stringify(result) : String(result);
+      } catch (err: any) {
+        observation = `API Error: ${err.message || String(err)}`;
+      }
     } else {
       // Check for MCP dynamic tools
       let foundMcp = false;

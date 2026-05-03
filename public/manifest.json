@@ -1,7 +1,7 @@
 {
-  "name": "SWAP Core",
-  "short_name": "SWAP",
-  "description": "Local Autonomous AI Agent",
+  "name": "Stan Agent",
+  "short_name": "Stan",
+  "description": "Local-First Personal AI Assistant",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#0a0b14",

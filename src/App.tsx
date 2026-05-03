@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import 'highlight.js/styles/github-dark.min.css';
 import hljs from 'highlight.js';
 import { Paperclip, Send, Cpu, Loader2, Mic, Volume2, VolumeX, Download, Upload, Settings, X, Plus, Trash2 } from 'lucide-react';
@@ -12,23 +13,71 @@ interface Message {
   timestamp: string;
 }
 
+const MarkdownMessage = ({ text }: { text: string }) => {
+  const [html, setHtml] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    const parse = async () => {
+      try {
+        setLoading(true);
+        const parsed = await marked.parse(text);
+        const cleanHover = DOMPurify.sanitize(parsed);
+        if (isMounted) {
+          setHtml(cleanHover);
+          setLoading(false);
+        }
+      } catch (e) {
+        if (isMounted) {
+          setHtml(text);
+          setLoading(false);
+        }
+      }
+    };
+    parse();
+    return () => { isMounted = false; };
+  }, [text]);
+
+  useEffect(() => {
+    if (html && !loading) {
+      document.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block as HTMLElement);
+      });
+    }
+  }, [html, loading]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-2 w-full animate-pulse mt-1">
+        <div className="h-4 bg-white/10 rounded-md w-full"></div>
+        <div className="h-4 bg-white/10 rounded-md w-5/6"></div>
+        <div className="h-4 bg-white/10 rounded-md w-4/6"></div>
+      </div>
+    );
+  }
+
+  return <div className="markdown-body text-[0.95rem] leading-[1.4]" dangerouslySetInnerHTML={{ __html: html }} />;
+};
+
 interface LLMModel {
   id: string;
   name: string;
+  description?: string;
 }
 
 const DEFAULT_PROMPT = `You are Stan, a personal AI assistant. You use MCP to connect to tools. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.`;
 
 const DEFAULT_MODELS: LLMModel[] = [
-  { id: 'gemma-2b-it-q4f16_1-MLC', name: 'Gemma 2B' },
-  { id: 'SmolLM-1.7B-Instruct-v0.2-q4f16_1-MLC', name: 'SmolLM 1.7B' },
-  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 3B' }
+  { id: 'gemma-2b-it-q4f16_1-MLC', name: 'Gemma 2B', description: 'Balanced performance and reasoning. Best overall choice.' },
+  { id: 'SmolLM-1.7B-Instruct-v0.2-q4f16_1-MLC', name: 'SmolLM 1.7B', description: 'Fastest loading and generation. Best for older devices/phones.' },
+  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 3B', description: 'Most capable reasoning. May run slower on entry-level hardware.' }
 ];
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [status, setStatus] = useState('Initialising...');
-  const [isSpinning, setIsSpinning] = useState(true);
+  const [status, setStatus] = useState('Waiting for model selection...');
+  const [isSpinning, setIsSpinning] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isReady, setIsReady] = useState(false);
@@ -37,8 +86,13 @@ export default function App() {
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadText, setDownloadText] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadSpeed, setDownloadSpeed] = useState<string | null>(null);
+  const [eta, setEta] = useState<string | null>(null);
+  const [modelLoadStarted, setModelLoadStarted] = useState(false);
 
   const [systemPrompt, setSystemPrompt] = useState(() => localStorage.getItem('swap_prompt') || DEFAULT_PROMPT);
   const [customModels, setCustomModels] = useState<LLMModel[]>(() => {
@@ -55,9 +109,16 @@ export default function App() {
 
   // Refs for closures
   const isVoiceEnabledRef = useRef(isVoiceEnabled);
+  const isMountedRef = useRef(true);
   useEffect(() => {
     isVoiceEnabledRef.current = isVoiceEnabled;
   }, [isVoiceEnabled]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const workerRef = useRef<Worker | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -76,6 +137,14 @@ export default function App() {
     scrollToBottom();
   }, [messages, typing]);
 
+  const mcpServersRef = useRef(mcpServers);
+  useEffect(() => {
+    mcpServersRef.current = mcpServers;
+    if (isReady && workerRef.current) {
+      workerRef.current.postMessage({ type: 'SYNC_MCP', payload: mcpServers });
+    }
+  }, [mcpServers, isReady]);
+
   const initWorker = useCallback((modelId: string) => {
     if (workerRef.current) {
       workerRef.current.terminate();
@@ -88,6 +157,7 @@ export default function App() {
     workerRef.current = worker;
 
     worker.onmessage = (e) => {
+      if (!isMountedRef.current) return;
       const { type, data } = e.data;
       switch (type) {
         case 'PROGRESS':
@@ -99,13 +169,36 @@ export default function App() {
           setStatus('Loading Model');
           setIsSpinning(true);
           setIsDownloading(true);
-          setDownloadText(data);
+          setDownloadText(data.text);
+          setDownloadProgress(data.progress || 0);
+
+          // Try to extract speed/ETA from text or calculate it
+          // Example text: "Fetching... [1/6]: 12.3MB/s" or "Fetching... 120MB/230MB (12MB/s)"
+          const speedMatch = data.text.match(/(\d+\.?\d*\s*[kMG]B\/s)/i);
+          if (speedMatch) {
+            setDownloadSpeed(speedMatch[1]);
+            
+            // If we have progress and speed, we can sometimes estimate, but WebLLM text is better
+            // Some versions of WebLLM include the time remaining in the text.
+          }
+
+          // Very basic ETA calculation if not in text
+          if (data.progress > 0 && data.progress < 1) {
+            // If we don't have a built-in ETA in text, we could calculate it here if we tracked startTime
+            // But let's look for common patterns like "ETA: 10s"
+            const etaMatch = data.text.match(/ETA:\s*(\d+s|\d+m\s*\d*s)/i);
+            if (etaMatch) {
+              setEta(etaMatch[1]);
+            }
+          }
           break;
         case 'READY':
           setStatus('Ready');
           setIsSpinning(false);
           setIsDownloading(false);
           setIsReady(true);
+          // Resync MCP servers after worker restart
+          worker.postMessage({ type: 'SYNC_MCP', payload: mcpServersRef.current });
           break;
         case 'DONE':
           setTyping(false);
@@ -140,6 +233,71 @@ export default function App() {
           setStatus('Export Complete');
           setIsSpinning(false);
           break;
+        case 'CALL_API': {
+          const { id, action, payload } = e.data;
+          const respond = (result: any) => worker.postMessage({ type: 'API_RESULT', id, result });
+          
+          try {
+            if (action === 'clipboardRead') {
+              navigator.clipboard.readText().then(respond).catch(err => respond('Clipboard Read Error: ' + err));
+            } else if (action === 'clipboardWrite') {
+              const text = typeof payload === 'string' ? payload : payload.text;
+              navigator.clipboard.writeText(text).then(() => respond('Copied to clipboard')).catch(err => respond('Clipboard Write Error: ' + err));
+            } else if (action === 'getGeolocation') {
+              navigator.geolocation.getCurrentPosition(
+                (pos) => respond({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+                (err) => respond('Geolocation Error: ' + err.message)
+              );
+            } else if (action === 'showNotification') {
+              const title = payload.title || 'Stan';
+              const body = payload.body || '';
+              if (Notification.permission === 'granted') {
+                new Notification(title, { body });
+                respond('Notification shown');
+              } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(permission => {
+                  if (permission === 'granted') {
+                    new Notification(title, { body });
+                    respond('Notification shown');
+                  } else {
+                    respond('Notification permission denied');
+                  }
+                });
+              } else {
+                respond('Notification permission denied');
+              }
+            } else if (action === 'wakeLock') {
+              if ('wakeLock' in navigator) {
+                (navigator as any).wakeLock.request('screen')
+                  .then(() => respond('Wake lock acquired'))
+                  .catch((err: any) => respond('Wake lock failed: ' + err));
+              } else {
+                respond('Wake lock not supported');
+              }
+            } else if (action === 'shareContent') {
+              if (navigator.share) {
+                navigator.share({ title: typeof payload === 'string' ? 'Shared from Stan' : payload.title, text: typeof payload === 'string' ? payload : payload.text, url: payload.url })
+                  .then(() => respond('Content shared'))
+                  .catch(err => respond('Share failed: ' + err));
+              } else {
+                respond('Web Share not supported');
+              }
+            } else if (action === 'vibrate') {
+              if (navigator.vibrate) {
+                const ms = typeof payload === 'number' ? payload : (payload.ms || 200);
+                navigator.vibrate(ms);
+                respond('Vibrated for ' + ms + 'ms');
+              } else {
+                respond('Vibration not supported');
+              }
+            } else {
+              respond('Unknown browser tool: ' + action);
+            }
+          } catch (err: any) {
+            respond('Error executing tool: ' + err.message);
+          }
+          break;
+        }
         case 'ERROR':
           setTyping(false);
           setStatus('Error: ' + data);
@@ -162,33 +320,56 @@ export default function App() {
 
     worker.onerror = (err) => {
       console.error(err);
+      if (!isMountedRef.current) return;
       setStatus('Worker crashed');
       setIsSpinning(false);
       setIsDownloading(false);
+      setIsProcessing(false);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          sender: 'system',
+          text: '⚠️ Local LLM worker crashed. Please reload the page or try a different model.',
+          isMarkdown: false,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
     };
 
     worker.postMessage({ type: 'INIT', modelId });
-    worker.postMessage({ type: 'SYNC_MCP', payload: mcpServers });
-  }, [mcpServers]);
+  }, []);
 
   useEffect(() => {
-    initWorker(currentModel);
     return () => {
       if (workerRef.current) workerRef.current.terminate();
     };
-  }, [currentModel, initWorker]);
+  }, []);
+
+  const startModel = () => {
+    setModelLoadStarted(true);
+    initWorker(currentModel);
+  };
 
   const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newModel = e.target.value;
     if (newModel === currentModel) return;
-    setCurrentModel(newModel);
-    setMessages([{
-      id: crypto.randomUUID(),
-      sender: 'agent',
-      text: `Switching to ${e.target.options[e.target.selectedIndex].text}...`,
-      isMarkdown: false,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }]);
+    
+    if (modelLoadStarted) {
+      if (window.confirm("Do you want to stop the current model and load the new one?")) {
+        setCurrentModel(newModel);
+        setMessages([{
+          id: crypto.randomUUID(),
+          sender: 'system',
+          text: `Switching to ${e.target.options[e.target.selectedIndex].text}...`,
+          isMarkdown: false,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }]);
+        initWorker(newModel);
+      }
+    } else {
+      setCurrentModel(newModel);
+    }
   };
 
   const handleSend = () => {
@@ -265,17 +446,17 @@ export default function App() {
   };
 
   const handleMic = () => {
-    if (!('webkitSpeechRecognition' in window)) {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       alert("Speech recognition not supported in this browser.");
       return;
     }
-    const SpeechRecognition = (window as any).webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognitionAPI();
     recognition.continuous = false;
     recognition.interimResults = false;
     
     recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
       const text = event.results[0][0].transcript;
       setInputValue(text);
     };
@@ -287,10 +468,7 @@ export default function App() {
 
   const renderMessageContent = (msg: Message) => {
     if (msg.sender === 'agent' && msg.isMarkdown) {
-      const htmlContent = marked.parse(msg.text);
-      // We parse safely by injecting the HTML
-      // Post processing for highlight.js can be done in a useEffect, but standard marked outputs simple pre/codes.
-      return <div className="markdown-body text-[0.95rem] leading-[1.4]" dangerouslySetInnerHTML={{ __html: htmlContent as string }} />;
+      return <MarkdownMessage text={msg.text} />;
     }
     return <span className="text-[0.95rem] leading-[1.4] whitespace-pre-wrap">{msg.text}</span>;
   };
@@ -302,26 +480,10 @@ export default function App() {
       <div className="absolute bottom-[-100px] right-[-100px] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-emerald-500/10 rounded-full blur-[150px] pointer-events-none"></div>
 
-      {isDownloading && (
-        <div className="absolute top-0 left-0 right-0 z-50 bg-emerald-500/20 backdrop-blur-md border-b border-emerald-500/30 px-4 py-2 flex flex-col md:flex-row items-start md:items-center justify-between text-xs text-emerald-100 animate-[fadeIn_0.3s_ease] gap-2 md:gap-0">
-          <div className="flex items-center gap-3">
-            <Loader2 size={14} className="animate-spin text-emerald-400 shrink-0" />
-            <span className="font-medium shrink-0">Model Installation</span>
-            <span className="opacity-80 border-l border-emerald-500/30 pl-3">Loading LLM parameters into browser memory. Do not close this tab.</span>
-          </div>
-          <span className="font-mono text-[10px] opacity-90 truncate max-w-[200px] md:max-w-xs">{downloadText}</span>
-        </div>
-      )}
-
-      <div className={`relative z-10 w-full h-full p-4 md:p-6 flex flex-col gap-4 md:gap-6 ${isDownloading ? 'pt-12 md:pt-14' : ''}`}>        {/* Header */}
+      <div className="relative z-10 w-full h-full p-4 md:p-6 flex flex-col gap-4 md:gap-6">
+        {/* Header */}
         <header className="flex items-center justify-between bg-transparent px-2 py-2">
         <div className="flex items-center gap-3 font-semibold select-none cursor-default">
-          <svg viewBox="0 0 100 100" width="24" height="24">
-            <path d="M20 50 L40 30 L60 30 L80 50 L60 70 L40 70 Z" fill="none" stroke="var(--accent)" strokeWidth="3" />
-            <path d="M20 50 L40 70 L60 70 L80 50 L60 30 L40 30 Z" fill="none" stroke="#00a3ff" strokeWidth="2" opacity="0.8" />
-            <circle cx="42" cy="50" r="4" fill="var(--accent)" />
-            <circle cx="58" cy="50" r="4" fill="#00a3ff" />
-          </svg>
           <span className="text-base tracking-tight font-medium text-white/90">Stan</span>
         </div>
         
@@ -340,7 +502,13 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full py-1 px-3">
-            {isSpinning ? <Loader2 size={12} className="animate-spin text-emerald-400" /> : <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>}
+            {isSpinning && !isDownloading ? (
+              <div className="w-16 h-1 bg-white/10 rounded-full overflow-hidden mr-1 relative">
+                <div className="absolute top-0 h-full bg-emerald-400 rounded-full w-1/2 animate-progress"></div>
+              </div>
+            ) : (
+              <div className={`w-1.5 h-1.5 rounded-full ${isDownloading ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-400'}`}></div>
+            )}
             <span className="text-[11px] font-medium text-white/70 truncate max-w-[100px]">{status}</span>
           </div>
 
@@ -351,8 +519,81 @@ export default function App() {
       </header>
 
       {/* Chat Container */}
-      <main className="flex-1 flex flex-col gap-4 bg-white/[0.03] border border-white-[0.08] backdrop-blur-3xl rounded-3xl p-4 md:p-6 overflow-hidden relative shadow-2xl">
-        <div ref={chatContainerRef} className="flex-1 overflow-y-auto flex flex-col gap-6 pr-2 webkit-overflow-scrolling-touch">
+      <main className="flex-1 flex flex-col gap-4 bg-white/[0.03] border border-white/10 backdrop-blur-3xl rounded-3xl p-4 md:p-6 overflow-hidden relative shadow-2xl max-w-5xl mx-auto w-full">
+        {isDownloading ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-[fadeIn_0.5s_ease]">
+            <div className="w-full max-w-2xl bg-black/40 border border-emerald-500/20 rounded-[2.5rem] p-8 md:p-12 shadow-2xl backdrop-blur-2xl relative overflow-hidden group">
+              {/* Animated background decoration */}
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-white/5 overflow-hidden">
+                <div 
+                  className="h-full bg-emerald-500 transition-all duration-500 ease-out shadow-[0_0_15px_rgba(16,185,129,0.8)]" 
+                  style={{ width: `${downloadProgress * 100}%` }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent w-full animate-[shimmer_2s_infinite]"></div>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center gap-8 relative z-10">
+                <div className="relative">
+                  <div className="w-24 h-24 rounded-3xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center animate-pulse">
+                    <Download size={40} className="text-emerald-400" />
+                  </div>
+                  <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-black text-[10px] font-black px-2 py-1 rounded-lg shadow-lg">
+                    {Math.round(downloadProgress * 100)}%
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <h2 className="text-3xl font-black text-white tracking-tight">System Installation</h2>
+                  <p className="text-white/50 text-sm max-w-sm mx-auto leading-relaxed italic border-l-2 border-emerald-500/30 pl-4 py-1">
+                    Downloading local intelligence. Your data never leaves this browser.
+                  </p>
+                </div>
+
+                <div className="w-full bg-white/5 rounded-2xl p-6 flex flex-col gap-6">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex justify-between items-end mb-1">
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-emerald-400/70">Master Progress</span>
+                      <span className="text-lg font-mono font-bold text-white">{Math.round(downloadProgress * 100)}%</span>
+                    </div>
+                    <div className="h-4 w-full bg-black/60 rounded-full overflow-hidden p-1 border border-white/5 shadow-inner">
+                      <div 
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-700 ease-out shadow-[0_0_10px_rgba(16,185,129,0.5)]" 
+                        style={{ width: `${downloadProgress * 100}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white/5 rounded-xl p-4 border border-white/5 flex flex-col items-center gap-1 group-hover:bg-white/[0.08] transition-colors">
+                      <span className="text-[10px] uppercase font-bold text-white/30 tracking-tighter">Throughput</span>
+                      <span className="text-xl font-mono font-black text-emerald-400">{downloadSpeed || '-- MB/s'}</span>
+                    </div>
+                    <div className="bg-white/5 rounded-xl p-4 border border-white/5 flex flex-col items-center gap-1 group-hover:bg-white/[0.08] transition-colors">
+                      <span className="text-[10px] uppercase font-bold text-white/30 tracking-tighter">Time Left</span>
+                      <span className="text-xl font-mono font-black text-white">{eta || (downloadProgress > 0 ? 'CALCULATING...' : '--')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 py-2 px-4 bg-emerald-500/5 border border-emerald-500/10 rounded-full animate-pulse">
+                  <Loader2 size={14} className="text-emerald-400 animate-spin" />
+                  <span className="text-[11px] font-mono text-emerald-400/80 truncate max-w-[200px]">{downloadText}</span>
+                </div>
+              </div>
+
+              {/* Decorative radial gradients */}
+              <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-[80px]"></div>
+              <div className="absolute -top-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-[80px]"></div>
+            </div>
+            
+            <p className="mt-8 text-xs text-white/30 flex items-center gap-2">
+              <span className="w-1 h-1 bg-emerald-500 rounded-full"></span>
+              Installation persists in your browser cache for instant future loads.
+            </p>
+          </div>
+        ) : (
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto flex flex-col gap-6 pr-2 webkit-overflow-scrolling-touch">
         
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto animate-[fadeIn_0.5s_ease]">
@@ -365,11 +606,23 @@ export default function App() {
             </div>
             <h2 className="text-xl font-semibold mb-2">Stan is here.</h2>
             <p className="text-sm text-white/50 mb-8 leading-relaxed">
-              I am an autonomous agent running entirely in your browser. I use MCP to connect to your local data and tools securely.
+              I am an autonomous agent running entirely in your browser. I use MCP to connect to your local data and tools securely.<br/><br/>
+              {!modelLoadStarted && "Please choose a model from the top right menu, then click the button below to download and load it into your browser."}
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <button onClick={() => setInputValue("Check my local calendar via MCP")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors tracking-tight">Connect local tools</button>
-              <button onClick={() => setInputValue("Summarize my local files")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors tracking-tight">Analyze files</button>
+              {!modelLoadStarted ? (
+                <div className="flex flex-col items-center gap-3">
+                  <button onClick={startModel} className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-xl transition-colors shadow-lg shadow-emerald-500/20 text-sm flex items-center gap-2">
+                    <Cpu size={16} /> Load Selected Model ({customModels.find(m => m.id === currentModel)?.name})
+                  </button>
+                  <p className="text-xs text-white/40 max-w-xs text-center">{customModels.find(m => m.id === currentModel)?.description || "A local WebGPU-accelerated model."}</p>
+                </div>
+              ) : (
+                <>
+                  <button onClick={() => setInputValue("Check my local calendar via MCP")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors tracking-tight">Connect local tools</button>
+                  <button onClick={() => setInputValue("Summarize my local files")} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs transition-colors tracking-tight">Analyze files</button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -377,7 +630,7 @@ export default function App() {
         {messages.map((msg) => (
           <div 
             key={msg.id} 
-            className={`flex flex-col max-w-[85%] animate-[fadeIn_0.2s_ease] ${msg.sender === 'user' ? 'self-end' : 'self-start'}`}
+            className={`flex flex-col max-w-[85%] md:max-w-[70%] lg:max-w-[60%] animate-[fadeIn_0.2s_ease] ${msg.sender === 'user' ? 'self-end' : 'self-start'}`}
           >
             <div className={`px-4 py-3 border backdrop-blur-lg break-words ${msg.sender === 'user' ? 'bg-white/5 border-white/5 rounded-2xl rounded-tr-none' : 'bg-white/10 border-white/20 rounded-2xl rounded-tl-none'} shadow-lg`}>
               {renderMessageContent(msg)}
@@ -392,13 +645,16 @@ export default function App() {
           <div className="flex flex-col max-w-[85%] self-start animate-[fadeIn_0.2s_ease]">
             <div className="px-4 py-3 bg-white/10 border border-white/20 rounded-2xl rounded-tl-none backdrop-blur-lg w-max shadow-lg shadow-black/20">
               <div className="flex items-center gap-2 h-5">
-                <Loader2 size={14} className="animate-spin text-white/60" />
+                <div className="w-16 h-1 bg-white/20 rounded-full overflow-hidden relative">
+                  <div className="absolute top-0 h-full bg-white/60 w-1/2 rounded-full animate-progress"></div>
+                </div>
                 <span className="text-[11px] text-white/60 uppercase tracking-widest">Processing...</span>
               </div>
             </div>
           </div>
         )}
-        </div>
+      </div>
+    )}
 
         {/* Input Area */}
         <div className="mt-auto relative shrink-0 pt-2">
@@ -427,7 +683,8 @@ export default function App() {
                  </label>
                  <button 
                    onClick={handleMic}
-                   className={`p-1.5 cursor-pointer transition-colors rounded-lg flex items-center gap-1.5 ${isListening ? 'text-red-400 bg-red-400/10 animate-pulse' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
+                   disabled={!isReady || isProcessing}
+                   className={`p-1.5 cursor-pointer transition-colors rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${isListening ? 'text-red-400 bg-red-400/10 animate-pulse' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
                    title="Voice Input"
                  >
                    <Mic size={16} />
@@ -495,10 +752,20 @@ export default function App() {
 
             <div className="h-px w-full bg-white/10 my-2"></div>
 
-            <div className="flex flex-col gap-4">
-              <label className="text-xs text-white/50 uppercase tracking-wider font-mono">MCP Servers (SSE/WS URLs)</label>
-              
-              <div className="flex flex-col gap-2">
+            <button 
+              onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
+              className="text-sm font-medium text-white/70 hover:text-white flex items-center justify-between w-full p-2 bg-white/5 rounded-xl transition-colors"
+            >
+              <span>Advanced Settings (MCP Servers & Local Models)</span>
+              <span>{showAdvancedSettings ? '▼' : '▶'}</span>
+            </button>
+
+            {showAdvancedSettings && (
+              <>
+                <div className="flex flex-col gap-4">
+                  <label className="text-xs text-white/50 uppercase tracking-wider font-mono">MCP Servers (SSE/WS URLs)</label>
+                  
+                  <div className="flex flex-col gap-2">
                 {mcpServers.map((url) => (
                   <div key={url} className="flex items-center justify-between gap-3 bg-white/5 border border-white/5 rounded-xl p-3">
                     <span className="text-xs text-white/70 font-mono truncate flex-1">{url}</span>
@@ -554,7 +821,8 @@ export default function App() {
                   <div key={m.id} className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 bg-white/5 border border-white/5 rounded-xl p-3">
                     <div className="flex flex-col">
                       <span className="font-medium text-sm">{m.name}</span>
-                      <span className="text-xs text-white/40 font-mono break-all">{m.id}</span>
+                      <span className="text-[11px] text-white/50">{m.description}</span>
+                      <span className="text-[10px] text-white/30 font-mono break-all mt-1">{m.id}</span>
                     </div>
                     <button 
                       onClick={() => setCustomModels(prev => prev.filter(mod => mod.id !== m.id))}
@@ -600,6 +868,8 @@ export default function App() {
               </div>
 
             </div>
+            </>
+            )}
           </div>
         </div>
       )}

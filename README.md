@@ -1,11 +1,8 @@
 # Stan — Local-First Personal AI Assistant
 
-[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-black?logo=github)](https://github.com/standardwebagent/Standardized-Web-Agents-Protocol)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 **Stan** is a privacy-first, autonomous AI assistant built on the **Standardized Web Agent Protocol (SWAP)**. Unlike cloud-based chatbots, Stan runs entirely on your hardware and connects directly to your local ecosystem.
 
-- **Formal specification:** [protocol.md](/public/protocol.md) – covering the 10 core enclaves of the protocol.
+- **Formal specification:** [protocol.md](public/protocol.md) – covering the 10 core enclaves of the protocol.
 - **Private & Secure:** Core logic and memory stay in your browser. No server costs, no API keys, no data leakage.
 - **MCP Integration:** Connects to local databases, file systems, and calendars via the Model Context Protocol (MCP).
 - **WebGPU Powered:** Leverages your GPU for native-speed inference using WebLLM.
@@ -60,6 +57,5 @@ For major changes to the spec, open a protocol-change proposal.
 
 🌐 Links
 
-· GitHub Repository: https://github.com/standardwebagent/Protocol
-· Live Demo (Open Source): URL after Vercel deployment
-· Protocol Specification: protocol.md
+· GitHub Repository: https://github.com/standardwebagent/Standardized-Web-Agents-Protocol
+· Protocol Specification: [protocol.md](public/protocol.md)
