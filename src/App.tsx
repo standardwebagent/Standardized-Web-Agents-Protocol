@@ -71,7 +71,8 @@ const DEFAULT_PROMPT = `You are Stan, a personal AI assistant. You use MCP to co
 const DEFAULT_MODELS: LLMModel[] = [
   { id: 'gemma-2b-it-q4f16_1-MLC', name: 'Gemma 2B', description: 'Balanced performance and reasoning. Best overall choice.' },
   { id: 'SmolLM-1.7B-Instruct-v0.2-q4f16_1-MLC', name: 'SmolLM 1.7B', description: 'Fastest loading and generation. Best for older devices/phones.' },
-  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 3B', description: 'Most capable reasoning. May run slower on entry-level hardware.' }
+  { id: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC', name: 'Qwen 1.5B', description: 'Compact and smart. Good for low-resource environments.' },
+  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3B', description: 'Most capable reasoning. May run slower on entry-level hardware.' }
 ];
 
 export default function App() {
@@ -162,30 +163,27 @@ export default function App() {
       switch (type) {
         case 'PROGRESS':
         case 'THINKING':
-          setStatus(data);
-          setIsSpinning(true);
+          if (isMountedRef.current) {
+            setStatus(data);
+            setIsSpinning(true);
+          }
           break;
         case 'DOWNLOAD_PROGRESS':
-          setStatus('Loading Model');
-          setIsSpinning(true);
-          setIsDownloading(true);
-          setDownloadText(data.text);
-          setDownloadProgress(data.progress || 0);
-
+          if (isMountedRef.current) {
+            setStatus('Loading Model');
+            setIsSpinning(true);
+            setIsDownloading(true);
+            setDownloadText(data.text);
+            setDownloadProgress(data.progress || 0);
+          }
+          
           // Try to extract speed/ETA from text or calculate it
-          // Example text: "Fetching... [1/6]: 12.3MB/s" or "Fetching... 120MB/230MB (12MB/s)"
           const speedMatch = data.text.match(/(\d+\.?\d*\s*[kMG]B\/s)/i);
-          if (speedMatch) {
+          if (speedMatch && isMountedRef.current) {
             setDownloadSpeed(speedMatch[1]);
-            
-            // If we have progress and speed, we can sometimes estimate, but WebLLM text is better
-            // Some versions of WebLLM include the time remaining in the text.
           }
 
-          // Very basic ETA calculation if not in text
-          if (data.progress > 0 && data.progress < 1) {
-            // If we don't have a built-in ETA in text, we could calculate it here if we tracked startTime
-            // But let's look for common patterns like "ETA: 10s"
+          if (data.progress > 0 && data.progress < 1 && isMountedRef.current) {
             const etaMatch = data.text.match(/ETA:\s*(\d+s|\d+m\s*\d*s)/i);
             if (etaMatch) {
               setEta(etaMatch[1]);
@@ -193,36 +191,40 @@ export default function App() {
           }
           break;
         case 'READY':
-          setStatus('Ready');
-          setIsSpinning(false);
-          setIsDownloading(false);
-          setIsReady(true);
+          if (isMountedRef.current) {
+            setStatus('Ready');
+            setIsSpinning(false);
+            setIsDownloading(false);
+            setIsReady(true);
+          }
           // Resync MCP servers after worker restart
           worker.postMessage({ type: 'SYNC_MCP', payload: mcpServersRef.current });
           break;
         case 'DONE':
-          setTyping(false);
-          setMessages(prev => [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              sender: 'agent',
-              text: data,
-              isMarkdown: true,
-              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }
-          ]);
-          setIsProcessing(false);
-          setStatus('Idle');
-          setIsSpinning(false);
+          if (isMountedRef.current) {
+            setTyping(false);
+            setMessages(prev => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                sender: 'agent',
+                text: data,
+                isMarkdown: true,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              }
+            ]);
+            setIsProcessing(false);
+            setStatus('Idle');
+            setIsSpinning(false);
+          }
           if (isVoiceEnabledRef.current && 'speechSynthesis' in window) {
-            // Strip markdown formatting for cleaner speech synthesis
             const textToSpeak = data.replace(/[*#_`]/g, '').replace(/\[.*\]\(.*\)/g, '');
             const utterance = new SpeechSynthesisUtterance(textToSpeak);
             window.speechSynthesis.speak(utterance);
           }
           break;
         case 'EXPORT_DATA':
+          if (!isMountedRef.current) return;
           const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -289,6 +291,14 @@ export default function App() {
                 respond('Vibrated for ' + ms + 'ms');
               } else {
                 respond('Vibration not supported');
+              }
+            } else if (action === 'barcodeScan') {
+              if ('BarcodeDetector' in window) {
+                // This requires a video element or blob, for now we just return support info
+                // or tell user to upload an image.
+                respond('BarcodeDetector is supported. For now, please upload a photo for deep analysis.');
+              } else {
+                respond('Barcode Detection NOT supported in this browser.');
               }
             } else {
               respond('Unknown browser tool: ' + action);
@@ -455,13 +465,21 @@ export default function App() {
     recognition.continuous = false;
     recognition.interimResults = false;
     
-    recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const text = event.results[0][0].transcript;
-      setInputValue(text);
+    recognition.onstart = () => {
+      if (isMountedRef.current) setIsListening(true);
     };
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      if (isMountedRef.current) {
+        const text = event.results[0][0].transcript;
+        setInputValue(text);
+      }
+    };
+    recognition.onerror = () => {
+      if (isMountedRef.current) setIsListening(false);
+    };
+    recognition.onend = () => {
+      if (isMountedRef.current) setIsListening(false);
+    };
     
     recognition.start();
   };
@@ -480,7 +498,7 @@ export default function App() {
       <div className="absolute bottom-[-100px] right-[-100px] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-emerald-500/10 rounded-full blur-[150px] pointer-events-none"></div>
 
-      <div className="relative z-10 w-full h-full p-4 md:p-6 flex flex-col gap-4 md:gap-6">
+      <div className="relative z-10 w-full h-full max-w-6xl mx-auto p-4 md:p-6 flex flex-col gap-4 md:gap-6">
         {/* Header */}
         <header className="flex items-center justify-between bg-transparent px-2 py-2">
         <div className="flex items-center gap-3 font-semibold select-none cursor-default">
