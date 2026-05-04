@@ -31,6 +31,7 @@ interface Message {
   text: string;
   isMarkdown: boolean;
   timestamp: string;
+  action?: string; // Optional property for UI actions like retail worker
 }
 
 const MarkdownMessage = React.memo(({ text }: { text: string }) => {
@@ -198,6 +199,7 @@ export default function App() {
   }, []);
 
   const workerRef = useRef<Worker | null>(null);
+  const workerTimeoutRef = useRef<number | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -302,14 +304,28 @@ export default function App() {
           worker.postMessage({ type: 'SYNC_MCP', payload: mcpServersRef.current });
           break;
         case 'DONE':
+          if (workerTimeoutRef.current) {
+             clearTimeout(workerTimeoutRef.current);
+             workerTimeoutRef.current = null;
+          }
           let agentOutput = data;
           try {
              const act = typeof data === 'string' ? JSON.parse(data) : data;
              if (act.action === 'complete') {
                 agentOutput = typeof act.payload === 'string' ? act.payload : (act.payload.answer || act.payload);
+             } else if (act.action === 'search_memory') {
+                agentOutput = `🔍 Searching your local memory for '${act.payload}'...`;
+             } else if (act.action === 'fetch_web') {
+                agentOutput = `🌐 Fetching the page: ${act.payload}...`;
+             } else if (act.action === 'calculate') {
+                agentOutput = `🧮 Calculating ${act.payload}...`;
+             } else if (act.action === 'save_note') {
+                agentOutput = `📝 Saving a note: '${act.payload}'...`;
+             } else if (act.action && act.payload) {
+                // If it's another action that somehow ended up here
+                agentOutput = `⚙️ Running tool: ${act.action}`;
              } else {
-                // If it's another action that somehow ended up here, just stringify it
-                agentOutput = JSON.stringify(act);
+                agentOutput = typeof data === 'string' ? data : JSON.stringify(data);
              }
           } catch (e) {
              // Fallback to raw string
@@ -419,6 +435,10 @@ export default function App() {
           break;
         }
         case 'ERROR':
+          if (workerTimeoutRef.current) {
+             clearTimeout(workerTimeoutRef.current);
+             workerTimeoutRef.current = null;
+          }
           setTyping(false);
           setStatus('Error: ' + data);
           setIsSpinning(false);
@@ -452,7 +472,8 @@ export default function App() {
           sender: 'system',
           text: '⚠️ Local LLM worker crashed. Please reload the page or try a different model.',
           isMarkdown: false,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          action: 'worker-crash'
         }
       ]);
     };
@@ -463,6 +484,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (workerRef.current) workerRef.current.terminate();
+      if (workerTimeoutRef.current) clearTimeout(workerTimeoutRef.current);
     };
   }, []);
 
@@ -512,6 +534,22 @@ export default function App() {
     
     setTyping(true);
     workerRef.current?.postMessage({ type: 'TASK', payload: { text, systemPrompt } });
+    
+    if (workerTimeoutRef.current) clearTimeout(workerTimeoutRef.current);
+    workerTimeoutRef.current = window.setTimeout(() => {
+      setIsProcessing(false);
+      setTyping(false);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          sender: 'system',
+          text: '⏰ The agent took too long. Please try again.',
+          isMarkdown: false,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    }, 60000);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -629,6 +667,19 @@ export default function App() {
   const renderMessageContent = (msg: Message) => {
     if (msg.sender === 'agent' && msg.isMarkdown) {
       return <MarkdownMessage text={msg.text} />;
+    }
+    if (msg.action === 'worker-crash') {
+      return (
+        <div className="flex flex-col gap-3">
+          <span className="text-[0.95rem] leading-[1.4] whitespace-pre-wrap">{msg.text}</span>
+          <button 
+            onClick={() => startModel()} 
+            className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors w-fit border border-emerald-400/20"
+          >
+            Retry / Restart Engine
+          </button>
+        </div>
+      );
     }
     return <span className="text-[0.95rem] leading-[1.4] whitespace-pre-wrap">{msg.text}</span>;
   };
@@ -831,7 +882,7 @@ export default function App() {
             
             <div className="flex items-center justify-between px-2 pb-2 mt-1">
                <div className="flex items-center gap-1">
-                 <label className="p-1.5 text-white/40 cursor-pointer hover:text-white hover:bg-white/10 transition-colors rounded-lg flex items-center gap-1.5" title="Upload Document">
+                 <label className="p-1.5 text-white/40 cursor-pointer hover:text-white hover:bg-white/10 transition-colors rounded-lg flex items-center gap-1.5" title="Upload Document" aria-label="Upload Document">
                    <Paperclip size={16} />
                    <input 
                      type="file" 
@@ -846,6 +897,7 @@ export default function App() {
                    disabled={!isReady || isProcessing}
                    className={`p-1.5 cursor-pointer transition-colors rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${isListening ? 'text-red-400 bg-red-400/10 animate-pulse' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
                    title="Voice Input"
+                   aria-label="Start voice input"
                  >
                    <Mic size={16} />
                  </button>
@@ -990,6 +1042,7 @@ export default function App() {
                         localStorage.setItem('swap_mcp_servers', JSON.stringify(updated));
                       }}
                       className="text-white/40 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-white/5"
+                      aria-label="Remove Server"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -1041,6 +1094,7 @@ export default function App() {
                     <button 
                       onClick={() => setCustomModels(prev => prev.filter(mod => mod.id !== m.id))}
                       className="text-white/40 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-white/5"
+                      aria-label="Remove Model"
                     >
                       <Trash2 size={16} />
                     </button>

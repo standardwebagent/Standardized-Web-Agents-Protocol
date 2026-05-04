@@ -100,7 +100,7 @@ If you are building for a client who owns a clinic and needs a HIPAA-compliant i
 | **SWAP Standard** | 1, 5, 6, 10 (+ 3 for multi-device) |
 | **SWAP High Assurance** | Standard + 2, 8, 9 |
 
-The reference implementation (Stan, available via `swap-agent.html`) is **SWAP Standard compliant**. It implements enclaves 1, 5, 6, and 10 fully. High Assurance features can be implemented as needed for enterprise deployments.
+The reference implementation (Stan, available in this repository) is **SWAP Standard compliant**. It implements enclaves 1, 5, 6, and 10 fully. High Assurance features can be implemented as needed for enterprise deployments.
 
 For detailed development roadmap, specifications, and project phases, please refer to the [Production Launch Development Brief](../docs/SPEC.md).
 

@@ -2,6 +2,8 @@
 
 Welcome to **Stan**, your fully local, browser-based AI agent.
 
+For security features, check the [Privacy Impact Assessment](PRIVACY_IMPACT_ASSESSMENT.md). For advanced config, check the [Admin Guide](ADMIN_GUIDE.md).
+
 ## Core Principles
 - **100% Local**: No cloud processing. All computations happen on your device.
 - **Privacy First**: Stan never sends your local data or queries externally.

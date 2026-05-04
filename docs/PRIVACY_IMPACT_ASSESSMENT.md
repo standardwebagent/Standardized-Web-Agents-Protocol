@@ -2,6 +2,8 @@
 
 **Project**: Stan - Local AI Agent
 
+For usage instructions, see the [User Manual](USER_MANUAL.md). For specifications and roadmap steps, see the [Production Launch Development Brief](SPEC.md).
+
 ## 1. Data Collection
 Stan operates entirely locally through the browser index storage, local PGlite, OPFS, and in-browser inference (via Transformers.js/MLC). 
 - **No data telemetry is collected.**

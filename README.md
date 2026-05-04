@@ -42,6 +42,13 @@ Choose your engine:
 - 🧠 **Llama 3.2 3B** (Most capable)
 - 🖥️ **WASM Fallback Models** (for CPU-only devices)
 
+## 📚 Documentation
+
+Explore the following configuration and operational guides for Stan:
+- **[User Manual](docs/USER_MANUAL.md):** Feature guide, local setup, and interface controls.
+- **[Admin Guide](docs/ADMIN_GUIDE.md):** Desktop application builds, custom models, and WASM/WebGPU engine overrides.
+- **[Privacy Impact Assessment](docs/PRIVACY_IMPACT_ASSESSMENT.md):** Security constraints, local-only data persistence, and zero-telemetry footprint.
+
 ## 🗺️ Project Scope & Specifications
 
 The application roadmap is divided into structured phases detailed in [docs/SPEC.md](docs/SPEC.md):
@@ -59,7 +66,7 @@ For major changes to the spec, open a protocol-change proposal.
 📄 License
 
 · Protocol specification (protocol.md): CC BY-SA 4.0
-· Reference implementation (swap-agent.html and related code): MIT
+· Reference implementation (index.html, src/*, and related code): MIT
 
 ---
 

@@ -1,5 +1,7 @@
 # Stan - Admin Guide
 
+For general usage, see the [User Manual](USER_MANUAL.md). For specifications and roadmap steps, see the [Production Launch Development Brief](SPEC.md).
+
 ## Export options for Desktop and Enterprise 
 If you choose to distribute the software as a desktop app format using the local codebase:
 1. Initialize the codebase locally.
