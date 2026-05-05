@@ -6,7 +6,43 @@ describe('engineDetector', () => {
     vi.stubGlobal('navigator', {});
   });
 
-  it('should fallback to wasm if navigator.gpu is undefined', async () => {
+  it('should use webnn if createContext resolves', async () => {
+    vi.stubGlobal('navigator', {
+      ml: {
+        createContext: vi.fn().mockResolvedValue({})
+      }
+    });
+    const result = await detectEngine();
+    expect(result).toBe('webnn');
+  });
+
+  it('should fallback to next engine if webnn createContext returns null', async () => {
+    vi.stubGlobal('navigator', {
+      ml: {
+        createContext: vi.fn().mockResolvedValue(null)
+      },
+      gpu: {
+        requestAdapter: vi.fn().mockResolvedValue({})
+      }
+    });
+    const result = await detectEngine();
+    expect(result).toBe('webgpu');
+  });
+
+  it('should fallback to next engine if webnn createContext throws', async () => {
+    vi.stubGlobal('navigator', {
+      ml: {
+        createContext: vi.fn().mockRejectedValue(new Error('ML Error'))
+      },
+      gpu: {
+        requestAdapter: vi.fn().mockResolvedValue({})
+      }
+    });
+    const result = await detectEngine();
+    expect(result).toBe('webgpu');
+  });
+
+  it('should fallback to wasm if navigator.gpu and navigator.ml are undefined', async () => {
     const result = await detectEngine();
     expect(result).toBe('wasm');
   });

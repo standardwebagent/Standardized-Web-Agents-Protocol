@@ -5,7 +5,7 @@ import 'highlight.js/styles/github-dark.min.css';
 import hljs from 'highlight.js';
 import { Paperclip, Send, Cpu, Loader2, Mic, Volume2, VolumeX, Download, Upload, Settings, X, Plus, Trash2 } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { detectEngine } from './engineDetector';
+import { detectEngine, type EngineType } from './engineDetector';
 
 import { get, set } from 'idb-keyval';
 import { Virtuoso } from 'react-virtuoso';
@@ -91,6 +91,7 @@ interface LLMModel {
 const DEFAULT_PROMPT = `You are Stan, a personal AI assistant. You use MCP to connect to tools. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.`;
 
 const DEFAULT_MODELS: LLMModel[] = [
+  { id: 'functiongemma-270m-it', name: 'FunctionGemma 270M', description: 'Lightning-fast tool-calling. Best default.' },
   { id: 'gemma-2b-it-q4f16_1-MLC', name: 'Gemma 2B', description: 'Balanced performance and reasoning. Best overall choice.' },
   { id: 'SmolLM-1.7B-Instruct-v0.2-q4f16_1-MLC', name: 'SmolLM 1.7B', description: 'Fastest loading and generation. Best for older devices/phones.' },
   { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 3B', description: 'Most capable reasoning. May run slower on entry-level hardware.' }
@@ -103,7 +104,7 @@ export default function App() {
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isReady, setIsReady] = useState(false);
-  const [currentModel, setCurrentModel] = useState('gemma-2b-it-q4f16_1-MLC');
+  const [currentModel, setCurrentModel] = useState('functiongemma-270m-it');
   const [typing, setTyping] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -115,6 +116,25 @@ export default function App() {
   const [downloadSpeed, setDownloadSpeed] = useState<string | null>(null);
   const [eta, setEta] = useState<string | null>(null);
   const [modelLoadStarted, setModelLoadStarted] = useState(false);
+  const [engine, setEngine] = useState<EngineType | null>(null);
+
+  useEffect(() => {
+    const initEngine = async () => {
+      const detected = await detectEngine();
+      setEngine(detected);
+      
+      // If we have a lightweight engine that loads quickly, auto-start the model
+      if (detected === 'wasm' || detected === 'webnn') {
+        // For WebNN, we still need the WASM worker until WebNN runtime is fully integrated
+        // Auto-load the small FunctionGemma model
+        if (!modelLoadStarted) {
+          startModel();   // This will now use the WASM worker and FunctionGemma
+        }
+      }
+    };
+    initEngine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
@@ -224,7 +244,7 @@ export default function App() {
     }
   }, [mcpServers, isReady]);
 
-  const initWorker = useCallback(async (modelId: string) => {
+  const initWorker = useCallback((modelId: string) => {
     if (workerRef.current) {
       workerRef.current.terminate();
     }
@@ -232,18 +252,10 @@ export default function App() {
     setIsSpinning(true);
     setIsReady(false);
 
-    let workerUrl = new URL('./worker.ts', import.meta.url);
-    const engineType = await detectEngine();
-    if (engineType === 'wasm') {
-      workerUrl = new URL('./worker-wasm.ts', import.meta.url);
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        sender: 'system',
-        text: '⚡ WebGPU is not supported. Falling back to CPU/WASM engine automatically.',
-        isMarkdown: false,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
-    }
+    // Choose the right worker based on detected engine
+    const workerUrl = (engine === 'webgpu')
+      ? new URL('./worker.ts', import.meta.url)
+      : new URL('./worker-wasm.ts', import.meta.url); // handles both wasm & future webnn
 
     const worker = new Worker(workerUrl, { type: 'module' });
     workerRef.current = worker;
@@ -478,8 +490,8 @@ export default function App() {
       ]);
     };
 
-    worker.postMessage({ type: 'INIT', modelId });
-  }, []);
+    worker.postMessage({ type: 'INIT', modelId, engineType: engine });
+  }, [engine]);
 
   useEffect(() => {
     return () => {
@@ -759,6 +771,9 @@ export default function App() {
                 <option key={m.id} value={m.id} className="bg-[#0a0b14]">{m.name}</option>
               ))}
             </select>
+            {engine === 'webgpu' && <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 rounded">GPU</span>}
+            {engine === 'webnn' && <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1 rounded">NPU</span>}
+            {engine === 'wasm' && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">CPU</span>}
           </div>
           
           <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full py-1 px-3">

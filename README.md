@@ -5,10 +5,12 @@
 - **Formal specification:** [protocol.md](public/protocol.md) – covering the 10 core enclaves of the protocol.
 - **Private & Secure:** Core logic and memory stay in your browser. No server costs, no API keys, no data leakage.
 - **MCP Integration:** Connects to local databases, file systems, and calendars via the Model Context Protocol (MCP).
-- **WebGPU Powered:** Leverages your GPU for native-speed inference using WebLLM, with automatic WASM fallbacks for older devices.
+- **WebGPU & WebNN Powered:** Leverages your GPU or NPU for native-speed inference using WebLLM and Transformers.js, with automatic WASM fallbacks for older devices.
 
 ### Why Stan is Different
+
 Stan isn't just a chat interface; he is an **agent** designed for autonomy:
+
 1. **Total Privacy:** Your data never leaves your device.
 2. **Zero Marginal Cost:** Since execution happens locally, there are no token fees or subscription costs.
 3. **Local Action:** Using MCP, Stan can actually "do" things—read your local files, check your calendar, or search your private databases.
@@ -32,30 +34,26 @@ Stan runs in an autonomous loop (up to 15 steps), allowing him to think, use too
 
 **Local Vector Memory (RAG)**
 Using an embedded **PGlite** (Postgres WASM) database with vector extensions, Stan stores your notes and documents locally.
+
 - **Document Ingestion:** Drag and drop `.txt` or `.md` files to build a local knowledge base.
 - **Semantic Recall:** Stan automatically retrieves relevant context.
 
 **High-Performance Local Models**
 Choose your engine:
-- 🚀 **Gemma 2B** (Balanced, default)
-- ⚡ **SmolLM 1.7B** (Fastest)
+
+- ⚡ **FunctionGemma 270M** (Lightning-fast, default)
+- 🚀 **Gemma 2B** (Balanced)
+- ⚡ **SmolLM 1.7B** (Fastest loading for older devices)
 - 🧠 **Llama 3.2 3B** (Most capable)
-- 🖥️ **WASM Fallback Models** (for CPU-only devices)
+- 🖥️ **WASM/WebNN Fallback Models** (for CPU/NPU devices)
 
 ## 📚 Documentation
 
 Explore the following configuration and operational guides for Stan:
+
 - **[User Manual](docs/USER_MANUAL.md):** Feature guide, local setup, and interface controls.
 - **[Admin Guide](docs/ADMIN_GUIDE.md):** Desktop application builds, custom models, and WASM/WebGPU engine overrides.
 - **[Privacy Impact Assessment](docs/PRIVACY_IMPACT_ASSESSMENT.md):** Security constraints, local-only data persistence, and zero-telemetry footprint.
-
-## 🗺️ Project Scope & Specifications
-
-The application roadmap is divided into structured phases detailed in [docs/SPEC.md](docs/SPEC.md):
-- **Phase 0:** Critical fixes, React Error Boundaries, MCP timeouts, robustness.
-- **Phase 1:** Zero-Config Deploy, Engine auto-selection, Human-readable outputs.
-- **Phase 2:** Installable & Trustworthy PWA, Conversation Persistence, and security hardening.
-- **Phase 3:** Enterprise Distribution via Electron desktop app, and automated testing (Vitest, Playwright).
 
 Contributions to the protocol specification or reference implementation are welcome. Please open an issue or pull request.
 
@@ -66,7 +64,7 @@ For major changes to the spec, open a protocol-change proposal.
 📄 License
 
 · Protocol specification (protocol.md): CC BY-SA 4.0
-· Reference implementation (index.html, src/*, and related code): MIT
+· Reference implementation (index.html, src/\*, and related code): MIT
 
 ---
 

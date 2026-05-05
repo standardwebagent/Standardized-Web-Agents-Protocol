@@ -16,6 +16,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.4.5",
     "@google/genai": "^1.29.0",
+    "@huggingface/transformers": "^4.2.0",
     "@mlc-ai/web-llm": "^0.2.83",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tailwindcss/typography": "^0.5.19",

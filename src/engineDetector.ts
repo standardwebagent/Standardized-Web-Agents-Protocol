@@ -1,22 +1,33 @@
 declare global {
   interface Navigator {
     gpu?: any;
+    ml?: any;
   }
 }
 
-export async function detectEngine(): Promise<'webgpu' | 'wasm'> {
-  // If navigator.gpu is completely undefined, we definitely need wasm
-  if (!navigator.gpu) return 'wasm';
-  try {
-    // requestAdapter will resolve to null if the browser supports the API
-    // but no suitable WebGPU adapter is available.
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) return 'wasm';
-    
-    // Additional checks could be added here (e.g. checking features or limits)
-    return 'webgpu';
-  } catch (e) {
-    // If requestAdapter throws an error, fallback to wasm
-    return 'wasm';
+export type EngineType = 'webnn' | 'webgpu' | 'wasm'
+
+export async function detectEngine(): Promise<EngineType> {
+  // 1. Try WebNN (most efficient – NPU)
+  if ('ml' in navigator && (navigator.ml as any)?.createContext) {
+    try {
+      const ctx = await (navigator.ml as any).createContext()
+      if (ctx) return 'webnn'
+    } catch {
+      // not available or blocked
+    }
   }
+
+  // 2. Try WebGPU (fast, wide support)
+  if ('gpu' in navigator) {
+    try {
+      const adapter = await navigator.gpu.requestAdapter()
+      if (adapter) return 'webgpu'
+    } catch {
+      // not available
+    }
+  }
+
+  // 3. Fallback – CPU via WASM (always works)
+  return 'wasm'
 }
