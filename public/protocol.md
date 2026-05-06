@@ -40,6 +40,7 @@ These are **required** for a standard agent implementation (like the Standardize
 
 ### Enclave 6: Cognition & Reasoning
 - Local AI (Transformers.js) – FunctionGemma 270M (default), plus custom models added via Settings
+- The agent runs 100% locally on your hardware and never touches Google's APIs or any proprietary cloud APIs.
 - Vector embeddings + semantic search (384-dim, pgvector)
 - Hardware acceleration (WebAssembly, WebNN, WebGPU)
 - ReAct loop (`search` → `reply`) with tool use (fetch, file ingest)

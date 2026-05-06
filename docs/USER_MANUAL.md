@@ -6,7 +6,7 @@ For security features, check the [Privacy Impact Assessment](PRIVACY_IMPACT_ASSE
 
 ## Core Principles
 
-- **100% Local**: No cloud processing. All computations happen on your device.
+- **100% Local**: No cloud processing. All computations happen on your device. The agent never touches Google's APIs or any other cloud provider's API.
 - **Privacy First**: Stan never sends your local data or queries externally.
 - **Seamless Operation**: Adapts to hardware constraints silently, supporting WebGPU for fast acceleration, WebNN for NPU acceleration, or WebAssembly as a reliable fallback.
 - **System Requirements**: Your device needs a minimum of 2GB RAM and 4 CPU cores to run Stan effectively.
