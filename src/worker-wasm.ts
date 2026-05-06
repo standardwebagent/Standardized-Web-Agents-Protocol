@@ -21,7 +21,7 @@ async function initModel(modelId: string) {
           type: 'DOWNLOAD_PROGRESS',
           data: {
             text: p.name ? `Loading ${p.name} …` : 'Downloading model …',
-            progress: percent / 100   // decimal for App.tsx's *100 display
+            progress: percent / 100
           }
         });
       }

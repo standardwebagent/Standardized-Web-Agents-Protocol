@@ -45,7 +45,7 @@ Choose your engine:
 - 🖥️ **WASM/WebNN/WebGPU Engines** (Optimized for your hardware)
 - ⚙️ **Custom Models** (Add more via the Settings menu)
 
-> **Important:** Stan requires a device with at least 4GB of RAM and 4 CPU cores to execute local AI models successfully.
+> **Important:** Stan requires a device with at least 2GB of RAM and 4 CPU cores to execute local AI models successfully. Stan successfully runs on iOS 17+ and Chrome for Android, though local AI compute drains battery heavily.
 
 ## 📚 Documentation
 

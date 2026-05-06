@@ -160,8 +160,8 @@ export default function App() {
       
       const mem = (navigator as any).deviceMemory;
       const cores = navigator.hardwareConcurrency;
-      if ((mem && mem < 4) || (cores && cores < 4)) {
-        setDeviceTooWeak(`Your device has ${mem || '?'}GB RAM and ${cores || '?'} cores. Stan requires at least 4GB RAM and 4 cores to run locally.`);
+      if ((mem && mem < 2) || (cores && cores < 4)) {
+        setDeviceTooWeak(`Your device has ${mem || '?'}GB RAM and ${cores || '?'} cores. Stan requires at least 2GB RAM and 4 cores to run locally.`);
         setStatus('Device not supported');
         return;
       }

@@ -9,7 +9,8 @@ For security features, check the [Privacy Impact Assessment](PRIVACY_IMPACT_ASSE
 - **100% Local**: No cloud processing. All computations happen on your device.
 - **Privacy First**: Stan never sends your local data or queries externally.
 - **Seamless Operation**: Adapts to hardware constraints silently, supporting WebGPU for fast acceleration, WebNN for NPU acceleration, or WebAssembly as a reliable fallback.
-- **System Requirements**: Your device needs a minimum of 4GB RAM and 4 CPU cores to run Stan effectively.
+- **System Requirements**: Your device needs a minimum of 2GB RAM and 4 CPU cores to run Stan effectively.
+- **Mobile Compatible**: Runs on modern smartphones! Works in Chrome for Android or Safari (iOS 17+) and can be installed to your home screen. Note: computing AI locally consumes noticeable battery power.
 - **Offline First**: PWA supports fully offline chat experiences, utilizing up to 300MB of static model and asset caching via service workers.
 
 ## Getting Started
