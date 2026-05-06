@@ -14,6 +14,12 @@ async function initModel(modelId: string) {
     device: 'wasm',        // Transformers.js auto‑selects WASM backend
     dtype: 'q8',           // 8‑bit quantisation for low memory
     max_length: 512,
+    progress_callback: (p: any) => {
+      self.postMessage({ 
+        type: 'DOWNLOAD_PROGRESS', 
+        data: { text: p.file ? `Loading ${p.file}` : (p.status || 'Loading...'), progress: p.progress || 0 } 
+      });
+    }
   } as any)
 }
 

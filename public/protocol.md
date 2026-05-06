@@ -11,7 +11,7 @@ SWAP completely flips the current AI model. Instead of thin clients talking to m
 
 What makes it fundamentally different:
 1. **Zero Data Leakage:** Data literally cannot leave the device—there are no server endpoints to send it to.
-2. **Infinite Scale, Zero Hosting Bills:** Since execution happens on user hardware (WebAssembly, WebNN, WebGPU) and AI models are fetched directly from free public CDN networks (like Hugging Face) or via peer-to-peer distribution, the developer pays absolutely nothing for compute or bandwidth. Hosting a SWAP agent for 10 users costs the exact same as hosting it for 10 million: zero.
+2. **Scalable Distribution:** Since execution happens on user hardware (WebAssembly, WebNN, WebGPU) and AI models are fetched directly from public CDN networks (like Hugging Face) or via peer-to-peer distribution, server-side compute and bandwidth requirements are significantly minimized. Hosting a SWAP agent is designed to be highly cost-efficient compared to traditional centralized models.
 3. **True Ownership:** The user holds the cryptographic keys to their agent's memories within their personal Origin.
 4. **Local Hardware Acceleration:** It leverages WebAssembly, WebNN, and WebGPU to run embedded models at native speeds.
 
@@ -83,7 +83,7 @@ If you just want a private assistant that remembers your tasks without sending d
 - **Step 1:** Fork the `Standardized Web Agents Protocol` repository.
 - **Step 2:** Ensure SWAP Standard Enclaves 1, 5, 6, and 10 remain intact.
 - **Step 3:** Swap out the default system prompt to personalize its responses ("You are my private journal assistant...").
-- **Step 4:** Host it statically on unlimited free-tier platforms like Cloudflare Pages, GitHub Pages, or a decentralized network like IPFS. Model weights are pulled directly from public CDN registries (e.g. Hugging Face Hub), ensuring you never get a bandwidth bill regardless of your user count.
+- **Step 4:** Host it statically on modern platforms like Cloudflare Pages, GitHub Pages, or a decentralized network like IPFS. Model weights are pulled directly from public CDN registries (e.g. Hugging Face Hub), shifting the compute and bandwidth burden away from your static web hosting.
 
 ### 2. High Assurance Application (e.g. Healthcare Clinic)
 If you are building for a client who owns a clinic and needs a HIPAA-compliant intake agent:

@@ -88,7 +88,45 @@ interface LLMModel {
   description?: string;
 }
 
-const DEFAULT_PROMPT = `You are Stan, a personal AI assistant. You use MCP to connect to tools. You have tools: search_memory (query), fetch_web (url), calculate (expression), save_note (text), complete (final answer). Output JSON: {"action":"tool_name", "payload":"..."}. Only output JSON.`;
+const DEFAULT_PROMPT = `You are Stan, a personal AI assistant who runs entirely on the user's device. Your job is to help the user complete tasks accurately, privately, and conversationally. You have access to tools that let you search local memory, fetch web pages, calculate, save notes, and share your final answer.
+
+## Rules (your employee handbook)
+- Always be warm, professional, and concise. Use natural language; never sound robotic.
+- Never invent facts. If you don't know something, say so honestly.
+- Protect privacy: never ask for or store sensitive personal identifiers unless the user explicitly asks you to save them.
+- Before using any tool that changes state (e.g., save_note), ask the user to confirm.
+- If a tool fails, explain what happened in plain language and suggest an alternative.
+- If the user's request is unclear, ask one clarifying question at a time.
+
+## How to use your tools
+You must output a single JSON object with an "action" and a "payload". The available actions are:
+- search_memory: look up past notes or conversations. payload is the search query.
+- fetch_web: get the contents of a web page. payload is the URL.
+- calculate: evaluate a math expression. payload is the expression as a string.
+- save_note: save a piece of information locally. payload is the text to save.
+- complete: give the final answer to the user. payload is your complete response (can include line breaks, lists, etc.). Only use this when you are fully done.
+
+## Examples of good interactions
+
+Example 1:
+User: "What's the weather in Paris?"
+Assistant (you): "I don't have live weather data, but I can check a weather website for you. Would you like me to fetch the page from weather.com/Paris?"
+
+Example 2:
+User: "Remember my meeting on Friday at 10 AM with Dr. Lee."
+Assistant: "Got it. I'll save: 'Meeting with Dr. Lee on Friday at 10 AM.' OK to proceed?"
+User: "Yes."
+Assistant: {"action":"save_note","payload":"Meeting with Dr. Lee on Friday at 10 AM"}
+
+Example 3:
+User: "Search my notes for 'project deadline'"
+Assistant: {"action":"search_memory","payload":"project deadline"}
+(After receiving tool result) Assistant: {"action":"complete","payload":"I found one note about that: "The project deadline is extended to May 15th." Is there anything else you'd like to know?"}
+
+## Self-check rule
+After every tool call, review your output internally: was the right tool used? Is the response helpful and within the rules? If not, correct it before asking the next question.
+
+Now, begin the conversation.`;
 
 const STAN_MODEL_ID = 'functiongemma-270m-it'
 const STAN_MODEL_NAME = 'FunctionGemma 270M'
@@ -113,17 +151,27 @@ export default function App() {
   const [modelLoadStarted, setModelLoadStarted] = useState(false);
   const [engine, setEngine] = useState<EngineType | null>(null);
 
+  const [deviceTooWeak, setDeviceTooWeak] = useState<string | null>(null);
+
   useEffect(() => {
-    const initEngine = async () => {
+    const init = async () => {
       const detected = await detectEngine();
       setEngine(detected);
       
-      // Auto-load the model
+      const mem = (navigator as any).deviceMemory;
+      const cores = navigator.hardwareConcurrency;
+      if ((mem && mem < 4) || (cores && cores < 4)) {
+        setDeviceTooWeak(`Your device has ${mem || '?'}GB RAM and ${cores || '?'} cores. Stan requires at least 4GB RAM and 4 cores to run locally.`);
+        setStatus('Device not supported');
+        return;
+      }
+      
       if (!modelLoadStarted) {
-        startModel();
+        setModelLoadStarted(true);
+        initWorker(STAN_MODEL_ID, detected);
       }
     };
-    initEngine();
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -228,7 +276,7 @@ export default function App() {
     }
   }, [mcpServers, isReady]);
 
-  const initWorker = useCallback((modelId: string) => {
+  const initWorker = useCallback((modelId: string, engineType?: EngineType | null) => {
     if (workerRef.current) {
       workerRef.current.terminate();
     }
@@ -474,7 +522,7 @@ export default function App() {
       ]);
     };
 
-    worker.postMessage({ type: 'INIT', modelId, engineType: engine });
+    worker.postMessage({ type: 'INIT', modelId, engineType: engineType || engine });
   }, [engine]);
 
   useEffect(() => {
@@ -719,29 +767,14 @@ export default function App() {
       <div className={`relative z-10 w-full h-full p-4 md:p-6 flex flex-col gap-4 md:gap-6 ${isDownloading ? 'pt-12 md:pt-14' : ''}`}>        {/* Header */}
         <header className="flex items-center justify-between bg-transparent px-2 py-2">
         <div className="flex items-center gap-3 font-semibold select-none cursor-default">
-          <span className="text-base tracking-tight font-medium text-white/90">Stan</span>
+          <div className="w-7 h-7 rounded-lg bg-white/10 border border-white/10 flex items-center justify-center">
+            <Cpu size={16} className="text-white/80" />
+          </div>
+          <span className="text-base tracking-tight font-semibold text-white/90">Stan</span>
         </div>
         
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 py-1 px-3">
-            <span className="text-[11px] font-medium text-white/60">{STAN_MODEL_NAME}</span>
-            {engine === 'webgpu' && <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1 rounded">GPU</span>}
-            {engine === 'webnn' && <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1 rounded">NPU</span>}
-            {engine === 'wasm' && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">CPU</span>}
-          </div>
-          
-          <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full py-1 px-3">
-            {isSpinning && !isDownloading ? (
-              <div className="w-16 h-1 bg-white/10 rounded-full overflow-hidden mr-1 relative">
-                <div className="absolute top-0 h-full bg-emerald-400 rounded-full w-1/2 animate-progress"></div>
-              </div>
-            ) : (
-              <div className={`w-1.5 h-1.5 rounded-full ${isDownloading ? 'bg-emerald-400 animate-pulse' : 'bg-emerald-400'}`}></div>
-            )}
-            <span className="text-[11px] font-medium text-white/70 truncate max-w-[100px]">{status}</span>
-          </div>
-
-          <button onClick={() => setIsSettingsOpen(true)} className="text-white/40 hover:text-white p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-colors ml-1" aria-label="Open Settings">
+          <button onClick={() => setIsSettingsOpen(true)} className="text-white/40 hover:text-white p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-colors" aria-label="Open Settings">
             <Settings size={14} />
           </button>
         </div>
@@ -770,6 +803,15 @@ export default function App() {
         {messages.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto animate-[fadeIn_0.5s_ease]">
             {!isReady ? (
+              deviceTooWeak ? (
+                <>
+                  <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mb-6 border border-red-500/20">
+                    <Cpu size={32} className="text-red-400" />
+                  </div>
+                  <h2 className="text-xl font-semibold mb-2 text-red-100">Device Not Supported</h2>
+                  <p className="text-sm text-red-200/60 mb-4">{deviceTooWeak}</p>
+                </>
+              ) : (
               /* Phase 2: Model is loading (download/init) */
               <>
                 <div className="w-20 h-20 bg-emerald-500/10 rounded-3xl flex items-center justify-center mb-6 border border-emerald-500/20">
@@ -784,6 +826,7 @@ export default function App() {
                 </div>
                 <p className="text-xs text-white/30">This may take a minute the first time. After that, launches are instant.</p>
               </>
+              )
             ) : (
               /* Phase 3: Ready — show example prompts */
               <>
@@ -810,6 +853,10 @@ export default function App() {
                   <button onClick={() => setInputValue("What's 15% of 280 plus 50?")} 
                           className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs transition-colors">
                     🧮 Quick math
+                  </button>
+                  <button onClick={() => setInputValue("Search the web for 'current bitcoin price'")} 
+                          className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs transition-colors">
+                    🌐 Web search
                   </button>
                 </div>
               </>
@@ -928,18 +975,18 @@ export default function App() {
           }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease]"
         >
-          <div className="bg-[#0a0b14] border border-white/10 w-full max-w-2xl rounded-3xl p-6 shadow-2xl flex flex-col gap-6 max-h-[85vh] overflow-y-auto">
+          <div className="bg-[#0f111a] border border-white/10 w-full max-w-xl rounded-3xl p-6 shadow-2xl flex flex-col gap-6 max-h-[85vh] overflow-y-auto">
+            
+            {/* Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <h2 className="text-xl font-semibold tracking-tight">Agent Settings</h2>
+                <h2 className="text-lg font-semibold tracking-tight">Settings</h2>
                 {deferredPrompt && (
                   <button
                     onClick={async () => {
                       deferredPrompt.prompt();
                       const { outcome } = await deferredPrompt.userChoice;
-                      if (outcome === 'accepted') {
-                        setDeferredPrompt(null);
-                      }
+                      if (outcome === 'accepted') setDeferredPrompt(null);
                     }}
                     className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 font-medium rounded-lg transition-colors text-xs border border-emerald-500/20"
                   >
@@ -947,6 +994,7 @@ export default function App() {
                   </button>
                 )}
               </div>
+              <p className="text-[10px] text-white/30">Auto-saves on close</p>
               <button 
                 onClick={() => {
                   setIsSettingsOpen(false);
@@ -955,145 +1003,157 @@ export default function App() {
                 className="p-2 text-white/40 hover:text-white transition-colors rounded-xl hover:bg-white/5"
                 aria-label="Close Settings"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <label className="text-xs text-white/50 uppercase tracking-wider font-mono">Conversation Persistence</label>
-              <div className="flex items-center gap-3">
-                <button
-                  role="switch"
-                  aria-checked={persistConversation}
-                  onClick={() => {
-                    const next = !persistConversation;
-                    setPersistConversation(next);
-                    localStorage.setItem('swap_persist', String(next));
-                    if (!next) {
-                      setMessages([]);
-                    }
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${persistConversation ? 'bg-emerald-500' : 'bg-white/20'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${persistConversation ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
-                <span className="text-sm text-white/70">Save messages locally (IndexedDB). If toggled off, clears saved conversation.</span>
+            {/* Conversation Persistence */}
+            <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-white/90">Remember conversations</span>
+                <span className="text-xs text-white/40">Restore your chat history when you come back</span>
               </div>
+              <button
+                role="switch"
+                aria-checked={persistConversation}
+                onClick={() => {
+                  const next = !persistConversation;
+                  setPersistConversation(next);
+                  localStorage.setItem('swap_persist', String(next));
+                  if (!next) setMessages([]);
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  persistConversation ? 'bg-emerald-500' : 'bg-white/20'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  persistConversation ? 'translate-x-6' : 'translate-x-1'
+                }`} />
+              </button>
             </div>
 
-            <div className="h-px w-full bg-white/10 my-1"></div>
-
+            {/* System Prompt */}
             <div className="flex flex-col gap-3">
-              <label className="text-xs text-white/50 uppercase tracking-wider font-mono">System Prompt</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-white/50 uppercase tracking-wider">System Prompt</label>
+                <button 
+                  onClick={() => setSystemPrompt(DEFAULT_PROMPT)} 
+                  className="text-xs text-white/40 hover:text-emerald-400 transition-colors"
+                >
+                  Reset to default
+                </button>
+              </div>
               <textarea 
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
-                className="w-full h-32 bg-black/40 border border-white/10 rounded-2xl p-4 text-sm focus:outline-none focus:border-emerald-500/50 resize-y leading-relaxed"
-                placeholder="You are an autonomous agent..."
+                rows={6}
+                className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white/80 focus:outline-none focus:border-emerald-500/50 resize-y leading-relaxed font-mono text-xs"
+                spellCheck={false}
               />
-              <div className="flex justify-end">
-                <button 
-                  onClick={() => setSystemPrompt(DEFAULT_PROMPT)} 
-                  className="text-xs text-white/40 hover:text-white transition-colors"
-                >
-                  Reset to Default
-                </button>
-              </div>
+              <p className="text-[10px] text-white/30 leading-relaxed">
+                Stan reads this at the start of every conversation. You can customize his personality or add instructions for how he handles calls.
+              </p>
             </div>
 
-            <div className="h-px w-full bg-white/10 my-2"></div>
+            {/* Divider */}
+            <div className="h-px w-full bg-white/5" />
 
+            {/* Advanced: MCP Servers */}
             <button 
               onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-              className="text-sm font-medium text-white/70 hover:text-white flex items-center justify-between w-full p-2 bg-white/5 rounded-xl transition-colors"
+              className="flex items-center justify-between w-full p-3 bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 rounded-xl transition-colors text-left"
             >
-              <span>Advanced Settings (MCP Servers)</span>
-              <span>{showAdvancedSettings ? '▼' : '▶'}</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-white/80">MCP Servers</span>
+                <span className="text-xs text-white/40">Connect Stan to your local tools and data sources</span>
+              </div>
+              <span className="text-white/30 text-sm">{showAdvancedSettings ? '▼' : '▶'}</span>
             </button>
 
             {showAdvancedSettings && (
-              <>
-                <div className="flex flex-col gap-4">
-                  <label className="text-xs text-white/50 uppercase tracking-wider font-mono">MCP Servers (SSE/WS URLs)</label>
-                  
+              <div className="flex flex-col gap-3 animate-[fadeIn_0.2s_ease]">
+                {mcpServers.length === 0 ? (
+                  <p className="text-xs text-white/40 italic px-1">No MCP servers connected yet. Add one below.</p>
+                ) : (
                   <div className="flex flex-col gap-2">
-                {mcpServers.map((url) => (
-                  <div key={url} className="flex items-center justify-between gap-3 bg-white/5 border border-white/5 rounded-xl p-3">
-                    <span className="text-xs text-white/70 font-mono truncate flex-1">{url}</span>
-                    <button 
-                      onClick={() => {
-                        const updated = mcpServers.filter(u => u !== url);
-                        setMcpServers(updated);
-                        localStorage.setItem('swap_mcp_servers', JSON.stringify(updated));
-                      }}
-                      className="text-white/40 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-white/5"
-                      aria-label="Remove Server"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {mcpServers.map((url) => (
+                      <div key={url} className="flex items-center justify-between gap-3 bg-white/[0.04] border border-white/5 rounded-xl p-3">
+                        <span className="text-xs text-white/70 font-mono truncate">{url}</span>
+                        <button 
+                          onClick={() => {
+                            const updated = mcpServers.filter(u => u !== url);
+                            setMcpServers(updated);
+                            localStorage.setItem('swap_mcp_servers', JSON.stringify(updated));
+                          }}
+                          className="text-white/30 hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-white/5"
+                          aria-label="Remove server"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-
-              <div className="flex flex-col md:flex-row gap-2 mt-2">
-                <input 
-                  type="text"
-                  placeholder="MCP Server URL (e.g., http://localhost:3001/sse)"
-                  value={newMcpUrl}
-                  onChange={(e) => setNewMcpUrl(e.target.value)}
-                  className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500/50 font-mono"
-                />
-                <button 
-                  onClick={() => {
-                    if (newMcpUrl.trim()) {
-                      if (!mcpServers.includes(newMcpUrl.trim())) {
+                )}
+                <div className="flex gap-2">
+                  <input 
+                    type="text"
+                    placeholder="http://localhost:3001/sse"
+                    value={newMcpUrl}
+                    onChange={(e) => setNewMcpUrl(e.target.value)}
+                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-emerald-500/50 font-mono"
+                  />
+                  <button 
+                    onClick={() => {
+                      if (newMcpUrl.trim() && !mcpServers.includes(newMcpUrl.trim())) {
                         const updated = [...mcpServers, newMcpUrl.trim()];
                         setMcpServers(updated);
                         localStorage.setItem('swap_mcp_servers', JSON.stringify(updated));
+                        setNewMcpUrl('');
                       }
-                      setNewMcpUrl('');
-                    }
-                  }}
-                  disabled={!newMcpUrl.trim()}
-                  className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  <Plus size={16} />
-                  Add Server
-                </button>
+                    }}
+                    disabled={!newMcpUrl.trim()}
+                    className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 px-3 py-2 rounded-xl text-xs font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
-            </div>
-
-            </>
             )}
 
-            <div className="h-px w-full bg-white/10 my-2"></div>
-            
+            {/* Divider */}
+            <div className="h-px w-full bg-white/5" />
+
+            {/* Danger Zone */}
             <div className="flex flex-col gap-3">
-               <label className="text-xs text-red-500/80 uppercase tracking-wider font-mono">Danger Zone</label>
-               <button 
-                 onClick={async () => {
-                   if (confirm("Are you sure you want to clear all data? This will wipe the downloaded AI models, database, IndexedDB, and local storage.")) {
-                     localStorage.clear();
-                     const dbs = await window.indexedDB.databases();
-                     dbs.forEach(db => { if (db.name) window.indexedDB.deleteDatabase(db.name); });
-                     const opfs = await navigator.storage.getDirectory();
-                     // PGlite creates 'swap-core' OPFS directory theoretically, or we can just try to delete all.
-                     // But we can clear caches.
-                     if ('caches' in window) {
-                       const keys = await caches.keys();
-                       for (const key of keys) {
-                         await caches.delete(key);
-                       }
-                     }
-                     window.location.reload();
-                   }
-                 }}
-                 className="flex items-center justify-center gap-2 p-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl transition-colors text-sm font-medium"
-               >
-                 <Trash2 size={16} />
-                 Clear All Data & Reset App
-               </button>
+              <label className="text-xs font-semibold text-red-400/70 uppercase tracking-wider">Danger Zone</label>
+              <p className="text-xs text-white/30 leading-relaxed">
+                This removes the downloaded AI model, all conversation history, and any cached data. You'll start fresh next time.
+              </p>
+              <button 
+                onClick={async () => {
+                  if (confirm("Permanently delete all data? Stan will need to re-download on your next visit.")) {
+                    localStorage.clear();
+                    const dbs = await window.indexedDB.databases();
+                    dbs.forEach(db => { if (db.name) window.indexedDB.deleteDatabase(db.name); });
+                    if ('caches' in window) {
+                      const keys = await caches.keys();
+                      for (const key of keys) await caches.delete(key);
+                    }
+                    window.location.reload();
+                  }
+                }}
+                className="flex items-center justify-center gap-2 w-full p-3 bg-red-500/5 hover:bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl transition-colors text-sm font-medium"
+              >
+                <Trash2 size={16} />
+                Clear All Data & Reset App
+              </button>
             </div>
+
+            {/* Footer note */}
+            <p className="text-[10px] text-white/20 text-center">
+              Settings are saved to this device only. Nothing is ever sent to a server.
+            </p>
+
           </div>
         </div>
       )}

@@ -36,24 +36,50 @@ export default function LandingApp() {
       </nav>
 
       <main className="lg:grid lg:grid-cols-2 min-h-[100vh]">
-        {/* Left pane - Hero & Abstract */}
-        <section className="relative px-6 pt-32 lg:p-16 xl:p-24 flex flex-col justify-center border-b lg:border-b-0 lg:border-r border-[#e5e5e5]">
+        {/* Left pane - Hero & Tech Grid */}
+        <section className="relative px-6 pt-32 lg:p-16 xl:p-24 flex flex-col justify-center border-b lg:border-b-0 lg:border-r border-[#e5e5e5] overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full bg-grid-black/[0.02] bg-[size:32px_32px] pointer-events-none" />
           
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="z-10"
+            className="z-10 relative"
           >
-            <h1 className="text-6xl md:text-7xl xl:text-[88px] leading-[1.05] font-bold tracking-[-0.03em] mb-8 mt-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/5 border border-black/5 text-[10px] uppercase tracking-wider font-mono mb-8">
+              <Activity size={10} className="text-emerald-500 animate-pulse" /> Deployment Status: Operational
+            </div>
+
+            <h1 className="text-6xl md:text-7xl xl:text-[88px] leading-[1.05] font-bold tracking-[-0.03em] mb-8">
               Meet Stan. <br className="hidden sm:block" /> Your Personal Agent.
             </h1>
             
-            <p className="text-xl md:text-2xl text-black/60 font-medium leading-[1.3] max-w-lg mb-12">
-              A local-first, privacy-focused assistant built on the SWAP protocol. Stan runs entirely in your browser using WebAssembly and hardware acceleration, and connects to your local tools via the Model Context Protocol (MCP).
+            <p className="text-xl md:text-2xl text-black/60 font-medium leading-[1.3] max-w-lg mb-16">
+              A local-first assistant built on the SWAP protocol. Stan runs primarily in your browser—leveraging your machine to minimize cloud dependencies and token fees.
             </p>
+
+            <div className="grid grid-cols-2 gap-px bg-[#e5e5e5] border border-[#e5e5e5] rounded-2xl overflow-hidden shadow-2xl shadow-black/5 bg-white">
+              {[
+                { icon: Shield, label: 'Privacy', sub: 'Zero leakage' },
+                { icon: Cpu, label: 'Hardware', sub: 'WASM + WebNN' },
+                { icon: Database, label: 'Memory', sub: 'PGlite Vector' },
+                { icon: Terminal, label: 'Actions', sub: 'Local MCP' }
+              ].map((item, i) => (
+                <div key={i} className="bg-white p-6 flex flex-col gap-4 hover:bg-black/[0.02] transition-colors group">
+                  <item.icon size={20} className="text-black/40 group-hover:text-black transition-colors" />
+                  <div>
+                    <div className="text-sm font-semibold">{item.label}</div>
+                    <div className="text-[11px] uppercase tracking-wider text-black/40 font-mono">{item.sub}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </motion.div>
+
+          {/* Decorative enclaves background text */}
+          <div className="absolute bottom-[-5%] left-[-5%] text-[12vw] font-bold text-black/[0.02] select-none pointer-events-none uppercase whitespace-nowrap rotate-[-5deg]">
+            SWAP AGENT v1.0
+          </div>
         </section>
 
         {/* Right pane - The Document */}
