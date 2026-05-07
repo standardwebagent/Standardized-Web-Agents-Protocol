@@ -3,7 +3,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import 'highlight.js/styles/github-dark.min.css';
 import hljs from 'highlight.js';
-import { Paperclip, Send, Cpu, Loader2, Mic, Volume2, VolumeX, Download, Upload, Settings, X, Plus, Trash2 } from 'lucide-react';
+import { Paperclip, Send, Cpu, Loader2, Mic, Volume2, VolumeX, Download, Upload, Settings, X, Plus, Trash2, FileText } from 'lucide-react';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { detectEngine, type EngineType } from './engineDetector';
 
@@ -228,6 +228,25 @@ export default function App() {
     };
   }, []);
 
+  const [voiceFirst, setVoiceFirst] = useState(() => {
+    const stored = localStorage.getItem('swap_voice_first');
+    return stored ? stored === 'true' : true;
+  });
+  const [autoListen, setAutoListen] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('swap_voice_first', String(voiceFirst));
+  }, [voiceFirst]);
+
+  useEffect(() => {
+    if (!isReady || !voiceFirst || !autoListen || isProcessing || isListening) return;
+    
+    // Auto start microphone when voiceFirst mode is enabled, model is ready, not processing, and not currently listening
+    const timer = setTimeout(() => handleMic(), 500);
+    return () => clearTimeout(timer);
+  }, [isReady, voiceFirst, autoListen, isProcessing, isListening, messages]);
+
   const workerRef = useRef<Worker | null>(null);
   const workerTimeoutRef = useRef<number | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -370,6 +389,12 @@ export default function App() {
             const textToSpeak = typeof agentOutput === 'string' ? agentOutput.replace(/[*#_`]/g, '').replace(/\[.*\]\(.*\)/g, '') : '';
             if (textToSpeak) {
                const utterance = new SpeechSynthesisUtterance(textToSpeak);
+               // Pause listening while speaking to avoid echoing self
+               const wasAutoListen = autoListen;
+               if (voiceFirst) setAutoListen(false);
+               utterance.onend = () => {
+                 if (voiceFirst) setAutoListen(true);
+               };
                window.speechSynthesis.speak(utterance);
             }
           }
@@ -573,7 +598,7 @@ export default function App() {
       });
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -759,10 +784,13 @@ export default function App() {
       {/* Chat Container */}
       <main 
         className="flex-1 flex flex-col gap-4 bg-white/[0.03] border border-white-[0.08] backdrop-blur-3xl rounded-3xl p-4 md:p-6 overflow-hidden relative shadow-2xl"
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+        onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
         onDrop={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          setIsDragging(false);
           if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const dt = new DataTransfer();
             dt.items.add(e.dataTransfer.files[0]);
@@ -773,6 +801,17 @@ export default function App() {
           }
         }}
       >
+        {isDragging && (
+          <div className="absolute inset-0 z-50 bg-[#0a0b14]/80 backdrop-blur-sm flex items-center justify-center border-4 border-dashed border-emerald-500/50 rounded-3xl animate-[fadeIn_0.2s_ease]">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center animate-bounce">
+                <FileText size={32} className="text-emerald-400" />
+              </div>
+              <h3 className="text-xl font-semibold text-white">Drop files to give me knowledge</h3>
+              <p className="text-sm text-white/50">Supports PDF, DOCX, TXT, MD, JSON</p>
+            </div>
+          </div>
+        )}
         <ErrorBoundary>
         <div ref={chatContainerRef} className="flex-1 overflow-hidden flex flex-col pr-2">
         
@@ -879,6 +918,20 @@ export default function App() {
 
         {/* Input Area */}
         <div className="mt-auto relative shrink-0 pt-2">
+          {voiceFirst && autoListen && isReady ? (
+            <div className="flex flex-col items-center justify-center p-6 min-h-[140px] animate-[fadeIn_0.3s_ease]">
+               <button
+                 onClick={() => setAutoListen(false)}
+                 className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all ${isListening ? 'bg-emerald-500' : 'bg-emerald-500/20 hover:bg-emerald-500/30'} shadow-[0_0_30px_rgba(16,185,129,0.3)]`}
+               >
+                 {isListening && (
+                    <span className="absolute inset-0 rounded-full animate-ping bg-emerald-500 opacity-75"></span>
+                 )}
+                 <Mic size={32} className="text-white relative z-10" />
+               </button>
+               <span className="mt-4 text-sm text-emerald-400/80 font-medium">Listening... Tap to type</span>
+            </div>
+          ) : (
           <div className="bg-[#1a1b26]/80 backdrop-blur-xl border border-white/10 rounded-2xl focus-within:border-white/30 transition-all shadow-lg overflow-hidden flex flex-col">
             <textarea 
               rows={1}
@@ -898,19 +951,30 @@ export default function App() {
                      type="file" 
                      ref={fileInputRef}
                      className="hidden" 
-                     accept=".txt,.md,.json" 
+                     accept=".pdf,.docx,.txt,.md,.json" 
                      onChange={handleFileUpload}
                    />
                  </label>
-                 <button 
-                   onClick={handleMic}
-                   disabled={!isReady || isProcessing}
-                   className={`p-1.5 cursor-pointer transition-colors rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${isListening ? 'text-red-400 bg-red-400/10 animate-pulse' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
-                   title="Voice Input"
-                   aria-label="Start voice input"
-                 >
-                   <Mic size={16} />
-                 </button>
+                 
+                 {voiceFirst && !autoListen ? (
+                   <button
+                     onClick={() => { setAutoListen(true); setIsListening(true); }}
+                     className="p-1.5 text-emerald-400 transition-colors hover:bg-white/10 rounded-lg flex items-center gap-1.5"
+                     title="Switch to Voice Mode"
+                   >
+                     <Mic size={16} />
+                   </button>
+                 ) : (
+                   <button 
+                     onClick={handleMic}
+                     disabled={!isReady || isProcessing}
+                     className={`p-1.5 cursor-pointer transition-colors rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${isListening ? 'text-red-400 bg-red-400/10 animate-pulse' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
+                     title="Voice Input"
+                     aria-label="Start voice input"
+                   >
+                     <Mic size={16} />
+                   </button>
+                 )}
                  <div className="w-px h-3 bg-white/10 mx-1"></div>
                  <button onClick={() => setIsVoiceEnabled(!isVoiceEnabled)} className={`p-1.5 cursor-pointer transition-colors rounded-lg ${isVoiceEnabled ? 'text-emerald-400 bg-emerald-400/10' : 'text-white/40 hover:text-white hover:bg-white/10'}`} title="Toggle Voice Response" aria-label="Toggle Voice Response">
                    {isVoiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
@@ -937,6 +1001,7 @@ export default function App() {
               </button>
             </div>
           </div>
+          )}
         </div>
       </main>
 
@@ -980,6 +1045,29 @@ export default function App() {
                 aria-label="Close Settings"
               >
                 <X size={18} />
+              </button>
+            </div>
+
+                <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-4 flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-white/90">Voice-first mode</span>
+                <span className="text-xs text-white/40">Automatically listen after responses</span>
+              </div>
+              <button
+                role="switch"
+                aria-checked={voiceFirst}
+                onClick={() => {
+                  const next = !voiceFirst;
+                  setVoiceFirst(next);
+                  localStorage.setItem('swap_voice_first', String(next));
+                }}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                  voiceFirst ? 'bg-emerald-500' : 'bg-white/20'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  voiceFirst ? 'translate-x-6' : 'translate-x-1'
+                }`} />
               </button>
             </div>
 
@@ -1027,7 +1115,7 @@ export default function App() {
                 spellCheck={false}
               />
               <p className="text-[10px] text-white/30 leading-relaxed">
-                Stan reads this at the start of every conversation. You can customize his personality or add instructions for how he handles calls.
+                Stan reads this at the start of every conversation. You can customize the personality or add instructions for how tools are handled.
               </p>
             </div>
 

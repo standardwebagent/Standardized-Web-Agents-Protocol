@@ -3,6 +3,12 @@ import { PGlite } from "@electric-sql/pglite";
 import { pipeline } from "@xenova/transformers";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { get, set } from "idb-keyval";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import pdfWorkerURL from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
+import mammoth from "mammoth";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerURL;
 
 let engine: any;
 let db: PGlite;
@@ -200,9 +206,7 @@ Only output JSON.`;
 
     let observation = '';
     if (act.action === 'search_memory') {
-      if (!dbReady) return self.postMessage({ type: 'DONE', data: 'Memory search is still warming up — please try again in a few seconds.' });
-      const results = await search(typeof act.payload === 'string' ? act.payload : act.payload.query);
-      observation = results.join('\n') || 'No memories found.';
+      observation = await searchMemory(typeof act.payload === 'string' ? act.payload : act.payload.query);
     } else if (act.action === 'fetch_web') {
       observation = await fetchWeb(typeof act.payload === 'string' ? act.payload : act.payload.url);
     } else if (act.action === 'calculate') {
@@ -250,12 +254,94 @@ Only output JSON.`;
   self.postMessage({ type: 'ERROR', data: 'Max loops exceeded' });
 }
 
-async function ingestFile(name: string, content: string) {
-  const chunks = content.match(/.{1,512}/gs) || [];
-  for (let chunk of chunks) {
-    await save('document', `[FILE:${name}] ${chunk}`);
+function dotProduct(a: number[], b: number[]) {
+  return a.reduce((sum, val, i) => sum + val * b[i], 0);
+}
+
+async function searchMemory(query: string): Promise<string> {
+  const qVec = await embed(query);
+  const chunks = await get('avery_chunks');
+  if (!chunks || chunks.length === 0) return "I haven't been given any documents yet. Drop some files on me.";
+  
+  const scored = chunks.map((c: any) => ({
+    ...c,
+    score: dotProduct(qVec, c.embedding)
+  }));
+  scored.sort((a: any, b: any) => b.score - a.score);
+  const top = scored.slice(0, 3);
+  return top.map((t: any) => `[From ${t.fileName}]: ${t.text}`).join('\n---\n');
+}
+
+async function ingestFile(name: string, content: ArrayBuffer) {
+  self.postMessage({ type: 'PROGRESS', data: `Extracting text from ${name}...` });
+  let fullText = '';
+  
+  try {
+    if (name.endsWith('.pdf')) {
+      const pdf = await pdfjsLib.getDocument({ data: content }).promise;
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        fullText += textContent.items.map((s: any) => s.str).join(' ') + '\n';
+      }
+    } else if (name.endsWith('.docx')) {
+      const result = await mammoth.extractRawText({ arrayBuffer: content });
+      fullText = result.value;
+    } else {
+      fullText = new TextDecoder().decode(content);
+    }
+  } catch(e) {
+    self.postMessage({ type: 'ERROR', data: `Failed to extract text from ${name}: ${e}` });
+    return;
   }
-  self.postMessage({ type: 'DONE', data: `Ingested ${chunks.length} chunks from ${name}` });
+
+  self.postMessage({ type: 'PROGRESS', data: `Chunking and indexing ${name}...` });
+
+  const paragraphs = fullText.split(/\n\s*\n/);
+  const chunks: string[] = [];
+  for (const p of paragraphs) {
+    const pTrim = p.trim();
+    if (pTrim.length < 50) continue;
+    if (pTrim.length > 500) {
+      const sentences = pTrim.match(/[^.!?]+[.!?]+/g) || [pTrim];
+      let currentChunk = '';
+      for (const s of sentences) {
+        if (currentChunk.length + s.length > 500) {
+           if (currentChunk.length >= 50) chunks.push(currentChunk.trim());
+           currentChunk = s;
+        } else {
+           currentChunk += ' ' + s;
+        }
+      }
+      if (currentChunk.length >= 50) chunks.push(currentChunk.trim());
+    } else {
+      chunks.push(pTrim);
+    }
+  }
+
+  const dbChunks = await get('avery_chunks') || [];
+  const fileId = crypto.randomUUID();
+  let indexed = 0;
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const text = chunks[i];
+    const vector = await embed(text);
+    dbChunks.push({
+      id: crypto.randomUUID(),
+      fileId,
+      fileName: name,
+      index: i,
+      text,
+      embedding: vector
+    });
+    indexed++;
+    if (indexed % 10 === 0) {
+      self.postMessage({ type: 'PROGRESS', data: `Indexing... ${indexed}/${chunks.length} chunks` });
+    }
+  }
+  
+  await set('avery_chunks', dbChunks);
+  self.postMessage({ type: 'DONE', data: `Indexed ${chunks.length} chunks from ${name}` });
 }
 
 self.onmessage = async (e: MessageEvent) => {
